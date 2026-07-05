@@ -1,0 +1,1 @@
+"""Quoridor domain package."""

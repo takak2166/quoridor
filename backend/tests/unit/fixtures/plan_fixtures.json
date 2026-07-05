@@ -1,0 +1,26 @@
+[
+  {
+    "id": "J.2-DIAG-BOTH",
+    "white": [5, 4],
+    "black": [4, 4],
+    "current": "white",
+    "horizontal_walls": [[3, 4]],
+    "vertical_walls": []
+  },
+  {
+    "id": "J.1-STRAIGHT",
+    "white": [5, 4],
+    "black": [4, 4],
+    "current": "white",
+    "horizontal_walls": [],
+    "vertical_walls": []
+  },
+  {
+    "id": "B4-BLOCK",
+    "white": [8, 4],
+    "black": [0, 4],
+    "current": "black",
+    "horizontal_walls": [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4], [0, 5], [0, 6], [0, 7]],
+    "vertical_walls": []
+  }
+]

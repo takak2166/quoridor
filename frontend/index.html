@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Quoridor</title>
+    <style>
+      * { box-sizing: border-box; }
+      body {
+        font-family: system-ui, sans-serif;
+        margin: 0;
+        padding: 1rem;
+        background: #1a1a2e;
+        color: #eee;
+      }
+      #app { max-width: 720px; margin: 0 auto; }
+      h1 { margin-top: 0; }
+      .controls { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-bottom: 1rem; }
+      button, select {
+        padding: 0.5rem 1rem;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+        background: #4a4e69;
+        color: #fff;
+      }
+      button:hover { background: #6c757d; }
+      button:disabled { opacity: 0.5; cursor: not-allowed; }
+      #board-wrap { width: 100%; max-width: 450px; margin: 0 auto; overflow: hidden; }
+      #board {
+        background: #f5e6c8;
+        border-radius: 8px;
+        display: block;
+        width: 100%;
+        height: auto;
+        max-width: 450px;
+      }
+      #status { margin-top: 1rem; min-height: 1.5rem; }
+      #error { color: #ff6b6b; margin-top: 0.5rem; }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <h1>Quoridor</h1>
+      <div class="controls">
+        <select id="difficulty" data-testid="difficulty">
+          <option value="very_easy">Very Easy</option>
+          <option value="easy">Easy</option>
+          <option value="normal" selected>Normal</option>
+          <option value="hard">Hard</option>
+        </select>
+        <select id="human-color" data-testid="human-color">
+          <option value="white">White (second)</option>
+          <option value="black" selected>Black (first)</option>
+        </select>
+        <button id="new-game" data-testid="new-game">New game</button>
+      </div>
+      <div id="board-wrap">
+        <svg id="board" data-testid="board" width="450" height="450" viewBox="0 0 450 450"></svg>
+      </div>
+      <div id="status" data-testid="game-status"></div>
+      <div id="error" data-testid="game-error"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

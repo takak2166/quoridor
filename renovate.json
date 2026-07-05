@@ -1,0 +1,19 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "schedule": ["before 6am on Monday"],
+  "packageRules": [
+    {
+      "matchPackagePatterns": ["^fastapi", "^uvicorn", "^pydantic"],
+      "groupName": "fastapi"
+    },
+    {
+      "matchPackagePatterns": ["^gymnasium", "^stable-baselines3", "^sb3-contrib"],
+      "groupName": "rl"
+    },
+    {
+      "matchPackagePatterns": ["^vite", "^typescript", "^@types/"],
+      "groupName": "vite-typescript"
+    }
+  ]
+}

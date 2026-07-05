@@ -1,0 +1,13 @@
+from __future__ import annotations
+
+from typing import Protocol
+
+
+class MetricsPort(Protocol):
+    def record_ai_inference(self, duration_s: float) -> None: ...
+
+    def record_ai_failure(self) -> None: ...
+
+    def record_ai_fallback(self) -> None: ...
+
+    def record_ai_rollback(self) -> None: ...

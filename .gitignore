@@ -1,0 +1,69 @@
+# --- Environment & secrets ---
+.env
+.env.local
+.env.*.local
+
+# --- Python / backend ---
+backend/.venv/
+**/__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+.eggs/
+dist/
+build/
+backend/.pytest_cache/
+backend/.ruff_cache/
+backend/.mypy_cache/
+.coverage
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# RL training artifacts
+backend/runs/
+models/checkpoints/
+backend/models/checkpoints/
+*.tfevents.*
+
+# --- Node / frontend ---
+frontend/node_modules/
+frontend/dist/
+frontend/.installed
+frontend/node_modules/.installed
+.pnpm-store/
+
+# Vite / Playwright
+frontend/.vite/
+frontend/test-results/
+frontend/playwright-report/
+frontend/blob-report/
+frontend/playwright/.cache/
+
+# --- Trained models (zip placed locally) ---
+models/*.zip
+models/*.onnx
+!models/.gitkeep
+
+# --- OS / IDE ---
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# --- Logs & temp files ---
+*.log
+npm-debug.log*
+pnpm-debug.log*
+.cache/
+eval_*.txt
+eval_*.html
+eval_*.json
+train_*.log
