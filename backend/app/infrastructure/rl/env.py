@@ -118,12 +118,12 @@ class QuoridorEnv(gym.Env):
         if self._opponent_policy is None:
             from app.infrastructure.ai.factory import ai_for_difficulty
 
-            if self.opponent == "normal":
-                self._opponent_policy = ai_for_difficulty("normal")
-            elif self.opponent in ("easy", "minimax"):
+            if self.opponent == "minimax":
                 self._opponent_policy = ai_for_difficulty("easy")
+            elif self.opponent in ("very_easy", "easy", "normal", "hard", "expert"):
+                self._opponent_policy = ai_for_difficulty(self.opponent)
             else:
-                self._opponent_policy = ai_for_difficulty("easy")
+                raise ValueError(f"Unsupported opponent: {self.opponent!r}")
 
         return self._opponent_policy.select_move(self._state, self._state.current_player)
 

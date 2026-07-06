@@ -83,6 +83,8 @@ def test_reset_black_agent_starts_immediately() -> None:
 
 def test_reset_randomizes_agent_color() -> None:
     env = QuoridorEnv()
+    # Seed once for a fixed RNG sequence; subsequent resets advance deterministically
+    # (not independent random trials), so both colors are guaranteed over 64 draws.
     env.reset(seed=12345)
     seen: set[str] = set()
     for _ in range(64):
