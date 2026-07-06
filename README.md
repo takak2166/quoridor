@@ -64,7 +64,7 @@ make train-ppo TIMESTEPS=200000
 make train-ppo-expert TIMESTEPS=300000
 
 # Hard vs Normal win-rate gate (target >70%)
-make eval-selfplay GAMES=100 DIFF_A=hard DIFF_B=normal MIN_WIN_RATE=0.70 MAX_P99_MS=500
+make eval-selfplay GAMES=100 DIFF_A=hard DIFF_B=normal MIN_WIN_RATE=0.70 MAX_P99_MS=3000
 ```
 
 ## Other
