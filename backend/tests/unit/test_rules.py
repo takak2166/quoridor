@@ -18,6 +18,50 @@ def test_jump_fixtures(case: dict) -> None:
     assert dests == case["expected_destinations"]
 
 
+def test_edge_column_allows_straight_jump_over_opponent() -> None:
+    """Official Quoridor: straight jump is allowed on column 0 when landing stays on board."""
+    case = next(c for c in JUMP_CASES if c["id"] == "J.5-EDGE")
+    dests = move_destinations(case["state"], case["direction"])
+    assert dests == frozenset({(3, 0)})
+
+    # Stuck-training example: white can jump black on the edge to (4, 0).
+    from tests.unit.fixtures.plan_fixtures import build_state
+
+    state = build_state(white=(6, 0), black=(5, 0), current="white")
+    assert move_destinations(state, "up") == frozenset({(4, 0)})
+
+
+def test_diagonal_jump_when_only_opposite_side_has_vertical_wall() -> None:
+    """A vertical wall on one lateral side must not block the other diagonal."""
+    from tests.unit.fixtures.plan_fixtures import build_state
+
+    # Same layout as the old (incorrect) J.4-BLOCK: rear H + right V only.
+    state = build_state(
+        white=(5, 4),
+        black=(4, 4),
+        current="white",
+        h=frozenset({(3, 4)}),
+        v=frozenset({(4, 4)}),
+    )
+    assert move_destinations(state, "up") == frozenset({(4, 3)})
+
+
+def test_stuck_dump_allows_diagonal_escape() -> None:
+    """Regression: training stuck dump must expose diagonal jump to (5, 5)."""
+    from tests.unit.fixtures.plan_fixtures import build_state
+
+    state = build_state(
+        white=(6, 6),
+        black=(5, 6),
+        current="white",
+        h=frozenset({(1, 3), (3, 5), (3, 7), (4, 6), (5, 4), (6, 6), (7, 7)}),
+        v=frozenset({(4, 4), (5, 6), (6, 5)}),
+    )
+    assert move_destinations(state, "up") == frozenset({(5, 5)})
+    legal = get_legal_actions(state)
+    assert any(isinstance(a, Move) and a.to == (5, 5) for a in legal)
+
+
 @pytest.mark.parametrize("case", B1_CASES, ids=lambda c: c["id"])
 def test_b1_fixtures(case: dict) -> None:
     assert is_action_legal(case["state"], case["action"]) == case["expected_legal"]
@@ -94,17 +138,19 @@ def test_is_action_legal_matches_direction_and_to() -> None:
     assert not is_action_legal(case["state"], Move(direction="up", to=None))
 
 
-def test_action_mask_allows_ambiguous_encode_index() -> None:
+def test_action_mask_uses_unique_destination_indices() -> None:
     import numpy as np
+
+    from quoridor.domain.actions import NUM_ACTIONS
 
     case = next(c for c in JUMP_CASES if c["id"] == "J.2-DIAG-BOTH")
     legal = get_legal_actions(case["state"])
-    mask = np.zeros(132, dtype=bool)
+    mask = np.zeros(NUM_ACTIONS, dtype=bool)
     for action in legal:
         mask[encode(action)] = True
     unique_indices = len({encode(a) for a in legal})
     assert mask.sum() == unique_indices
-    assert mask.sum() < len(legal)
+    assert mask.sum() == len(legal)
 
 
 def test_walls_remaining_zero_rejects_wall() -> None:
@@ -124,10 +170,12 @@ def test_walls_remaining_zero_rejects_wall() -> None:
 def test_action_mask_shape_initial_state() -> None:
     import numpy as np
 
+    from quoridor.domain.actions import NUM_ACTIONS
+
     state = initial_state()
     legal = get_legal_actions(state)
-    mask = np.zeros(132, dtype=bool)
+    mask = np.zeros(NUM_ACTIONS, dtype=bool)
     for action in legal:
         mask[encode(action)] = True
-    assert mask.shape == (132,)
+    assert mask.shape == (NUM_ACTIONS,)
     assert mask.sum() == len({encode(a) for a in legal})
