@@ -22,7 +22,7 @@ def test_env_step_valid_mask() -> None:
 
 
 def test_env_reward_when_agent_wins() -> None:
-    env = QuoridorEnv(agent_color="white", opponent="random")
+    env = QuoridorEnv(agent_color="white", opponent="random", reward_shaping=False)
     env.reset(options={"agent_color": "white"})
     env._state = QuoridorState(
         white=(1, 4),
@@ -42,7 +42,7 @@ def test_env_reward_when_agent_wins() -> None:
 
 
 def test_env_reward_when_opponent_wins(monkeypatch: pytest.MonkeyPatch) -> None:
-    env = QuoridorEnv(agent_color="white", opponent="random")
+    env = QuoridorEnv(agent_color="white", opponent="random", reward_shaping=False)
     env.reset(options={"agent_color": "white"})
     monkeypatch.setattr(
         env,
