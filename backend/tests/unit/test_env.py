@@ -1,6 +1,5 @@
 import numpy as np
 import pytest
-from gymnasium import error as gym_error
 
 from app.infrastructure.rl.env import QuoridorEnv
 from quoridor.domain.actions import Move, encode
@@ -93,8 +92,8 @@ def test_reset_randomizes_agent_color() -> None:
     assert seen == {"black", "white"}
 
 
-def test_step_rejects_opponent_turn() -> None:
-    env = QuoridorEnv(agent_color="white", opponent="random")
+def test_step_ends_episode_on_opponent_turn() -> None:
+    env = QuoridorEnv(agent_color="white", opponent="random", reward_shaping=False)
     env.reset(options={"agent_color": "white"})
     env._state = QuoridorState(
         white=(8, 4),
@@ -105,8 +104,12 @@ def test_step_rejects_opponent_turn() -> None:
         vertical_walls=empty_walls(),
         current_player="black",
     )
-    with pytest.raises(gym_error.InvalidAction, match="Not agent's turn"):
-        env.step(0)
+    obs, reward, terminated, truncated, info = env.step(0)
+    assert obs.shape == (135,)
+    assert reward == -1.0
+    assert terminated
+    assert not truncated
+    assert info["action_masks"].shape == (132,)
 
 
 def test_mask_only_agent_legal_moves() -> None:

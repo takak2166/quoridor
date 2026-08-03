@@ -90,12 +90,27 @@ class QuoridorEnv(gym.Env):
         return self._obs(), self._info()
 
     def step(self, action: int) -> tuple[np.ndarray, float, bool, bool, dict[str, Any]]:
+        action = int(action)
+
         if self._state.current_player != self.agent_color:
-            raise gym.error.InvalidAction("Not agent's turn")
+            logger.error(
+                "STEP_TURN_MISS action=%s agent=%s turn=%s — ending episode",
+                action,
+                self.agent_color,
+                self._state.current_player,
+            )
+            return self._obs(), -1.0, True, False, self._info()
 
         mask = self._mask()
-        if not mask[action]:
-            raise gym.error.InvalidAction(f"Invalid action {action}")
+        if not mask.any() or not mask[action]:
+            logger.error(
+                "STEP_MASK_REJECT action=%s decoded=%s agent=%s mask_sum=%s — ending episode",
+                action,
+                decode(action),
+                self.agent_color,
+                int(mask.sum()),
+            )
+            return self._obs(), -1.0, True, False, self._info()
 
         framed = decode(action)
         absolute = action_from_agent_frame(framed, self.agent_color)
@@ -104,7 +119,8 @@ class QuoridorEnv(gym.Env):
         elif isinstance(absolute, WallSlot):
             move = absolute
         else:
-            raise gym.error.InvalidAction(f"Unsupported action {action}")
+            logger.error("STEP_UNSUPPORTED action=%s — ending episode", action)
+            return self._obs(), -1.0, True, False, self._info()
 
         state_before = self._state.copy()
         self._state = apply_action(self._state, move)

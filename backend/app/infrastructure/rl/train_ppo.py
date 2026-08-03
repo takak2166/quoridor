@@ -107,6 +107,12 @@ def main() -> None:
     parser.add_argument("--checkpoint-freq", type=int, default=10_240)
     parser.add_argument("--vec-env", type=str, default="subproc", choices=["dummy", "subproc"])
     parser.add_argument("--tb-log", type=str, default="runs/quoridor")
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Load MaskablePPO zip and continue curriculum from this checkpoint",
+    )
     args = parser.parse_args()
 
     curriculum = args.curriculum.strip() or None
@@ -130,18 +136,26 @@ def main() -> None:
         return DummyVecEnv(factories)
 
     model: MaskablePPO | None = None
+    if args.resume:
+        resume_path = Path(args.resume)
+        if not resume_path.is_file():
+            raise FileNotFoundError(f"Resume checkpoint not found: {resume_path}")
+        logger.info("Resuming from %s", resume_path)
+        model = MaskablePPO.load(str(resume_path))
+
     checkpoint_dir = Path(args.checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
 
     for stage_i, (opponent, steps) in enumerate(stages, start=1):
         logger.info(
-            "Stage %s/%s: opponent=%s timesteps=%s potential_scale=%s vec_env=%s",
+            "Stage %s/%s: opponent=%s timesteps=%s potential_scale=%s vec_env=%s resume=%s",
             stage_i,
             len(stages),
             opponent,
             steps,
             args.potential_scale,
             args.vec_env,
+            bool(args.resume),
         )
         env = make_vec(opponent)
         try:
