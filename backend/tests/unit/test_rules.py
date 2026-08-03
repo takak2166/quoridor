@@ -138,7 +138,8 @@ def test_is_action_legal_matches_direction_and_to() -> None:
     assert not is_action_legal(case["state"], Move(direction="up", to=None))
 
 
-def test_action_mask_uses_unique_destination_indices() -> None:
+def test_action_mask_collapses_ambiguous_direction_moves() -> None:
+    """Direction action space: two diagonal 'up' destinations share one index."""
     import numpy as np
 
     from quoridor.domain.actions import NUM_ACTIONS
@@ -150,7 +151,10 @@ def test_action_mask_uses_unique_destination_indices() -> None:
         mask[encode(action)] = True
     unique_indices = len({encode(a) for a in legal})
     assert mask.sum() == unique_indices
-    assert mask.sum() == len(legal)
+    assert unique_indices < len(legal)
+    up_moves = [a for a in legal if isinstance(a, Move) and a.direction == "up"]
+    assert len(up_moves) == 2
+    assert encode(up_moves[0]) == encode(up_moves[1])
 
 
 def test_walls_remaining_zero_rejects_wall() -> None:
