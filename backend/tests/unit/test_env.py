@@ -129,10 +129,12 @@ def test_mask_only_agent_legal_moves() -> None:
     assert not env._mask().any()
 
 
-def test_observation_reflects_agent_color() -> None:
+def test_observation_is_agent_relative_for_both_colors() -> None:
     env = QuoridorEnv()
     obs_white, _ = env.reset(options={"agent_color": "white"})
     assert obs_white[134] == 1.0
+    assert obs_white[0] == 1.0  # agent at bottom row 8
 
     obs_black, _ = env.reset(options={"agent_color": "black"})
-    assert obs_black[134] == 0.0
+    assert obs_black[134] == 1.0
+    assert obs_black[0] == 1.0

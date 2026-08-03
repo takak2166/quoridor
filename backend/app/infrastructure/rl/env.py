@@ -9,7 +9,8 @@ from gymnasium import spaces
 
 from app.infrastructure.rl.move_resolution import resolve_ambiguous_move
 from app.mappers.observation_mapper import to_observation
-from quoridor.domain.actions import NUM_ACTIONS, Move, decode, encode
+from quoridor.agent_frame import action_from_agent_frame, action_to_agent_frame
+from quoridor.domain.actions import NUM_ACTIONS, Move, WallSlot, decode, encode
 from quoridor.domain.state import Color, initial_state
 from quoridor.pathfinding import SimpleDistanceCache
 from quoridor.rules import apply_action, check_winner, get_legal_actions
@@ -69,9 +70,14 @@ class QuoridorEnv(gym.Env):
         if not mask[action]:
             raise gym.error.InvalidAction(f"Invalid action {action}")
 
-        move = decode(action)
-        if isinstance(move, Move):
-            move = resolve_ambiguous_move(self._state, move.direction, self.np_random)
+        framed = decode(action)
+        absolute = action_from_agent_frame(framed, self.agent_color)
+        if isinstance(absolute, Move):
+            move = resolve_ambiguous_move(self._state, absolute.direction, self.np_random)
+        elif isinstance(absolute, WallSlot):
+            move = absolute
+        else:
+            raise gym.error.InvalidAction(f"Unsupported action {action}")
         self._state = apply_action(self._state, move)
         terminated = check_winner(self._state) is not None
 
@@ -137,7 +143,7 @@ class QuoridorEnv(gym.Env):
 
         legal = get_legal_actions(self._state, dist_cache=self._cache)
         for a in legal:
-            mask[encode(a)] = True
+            mask[encode(action_to_agent_frame(a, self.agent_color))] = True
         return mask
 
     def _info(self) -> dict[str, Any]:
