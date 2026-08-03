@@ -7,10 +7,11 @@ from dataclasses import dataclass, field
 import numpy as np
 from numpy.typing import NDArray
 
-from app.infrastructure.ai.action_mask import legal_action_mask
+from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame
 from app.infrastructure.ai.evaluation import StateEvaluator
 from app.infrastructure.ai.ppo_loader import ppo_model_store
 from app.mappers.observation_mapper import to_observation
+from quoridor.agent_frame import action_from_agent_frame, action_to_agent_frame
 from quoridor.domain.actions import NUM_ACTIONS, Action, decode, encode
 from quoridor.domain.state import Color, QuoridorState
 from quoridor.pathfinding import SimpleDistanceCache
@@ -84,10 +85,11 @@ class PPOPolicy:
     def _select_with_model(self, state: QuoridorState, color: Color, legal: list[Action]) -> Action:
         model = ppo_model_store.get(self.model_path)
         obs = to_observation(state, color)
-        mask = legal_action_mask(state, legal)
+        mask = legal_action_mask_agent_frame(legal, color)
         action_idx, _ = model.predict(obs, action_masks=mask, deterministic=True)
-        move = decode(int(action_idx))
-        candidates = [a for a in legal if encode(a) == encode(move)]
+        absolute = action_from_agent_frame(decode(int(action_idx)), color)
+        abs_idx = encode(absolute)
+        candidates = [a for a in legal if encode(a) == abs_idx]
         if len(candidates) == 1:
             return candidates[0]
         if len(candidates) > 1:
@@ -104,15 +106,17 @@ class PPOPolicy:
 
         model = ppo_model_store.get(self.model_path)
         obs = to_observation(state, color)
-        mask = legal_action_mask(state, legal)
+        mask = legal_action_mask_agent_frame(legal, color)
         obs_tensor = torch.as_tensor(obs, device=model.device).unsqueeze(0)
         mask_tensor = torch.as_tensor(mask, device=model.device).unsqueeze(0)
         with torch.no_grad():
             dist = model.policy.get_distribution(obs_tensor, action_masks=mask_tensor)
             probs = dist.distribution.probs.detach().cpu().numpy().reshape(-1)
+        # Expose prior in absolute action space for search consumers.
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
         for action in legal:
-            prior[encode(action)] = float(probs[encode(action)])
+            framed_idx = encode(action_to_agent_frame(action, color))
+            prior[encode(action)] = float(probs[framed_idx])
         if prior.sum() <= 0:
             for action in legal:
                 prior[encode(action)] = 1.0
