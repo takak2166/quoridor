@@ -1,19 +1,17 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
 from typing import Literal
 
 from quoridor.domain.state import Color
 
 Direction = Literal["up", "down", "left", "right"]
 
-
-class DirectionEnum(Enum):
-    UP = 0
-    DOWN = 1
-    LEFT = 2
-    RIGHT = 3
+BOARD_SIZE = 9
+MOVE_ACTION_COUNT = BOARD_SIZE * BOARD_SIZE  # 81 cells
+H_WALL_OFFSET = MOVE_ACTION_COUNT
+V_WALL_OFFSET = H_WALL_OFFSET + 64
+NUM_ACTIONS = V_WALL_OFFSET + 64  # 209
 
 
 @dataclass(frozen=True)
@@ -31,26 +29,34 @@ class WallSlot:
 
 Action = Move | WallSlot
 
-NUM_ACTIONS = 132
+
+def cell_index(row: int, col: int) -> int:
+    return row * BOARD_SIZE + col
+
+
+def cell_from_index(index: int) -> tuple[int, int]:
+    return index // BOARD_SIZE, index % BOARD_SIZE
 
 
 def encode(action: Action) -> int:
     if isinstance(action, Move):
-        mapping = {"up": 0, "down": 1, "left": 2, "right": 3}
-        return mapping[action.direction]
+        if action.to is None:
+            raise ValueError("Move encoding requires explicit destination")
+        row, col = action.to
+        return cell_index(row, col)
     if action.orientation == "horizontal":
-        return 4 + action.row * 8 + action.col
-    return 68 + action.row * 8 + action.col
+        return H_WALL_OFFSET + action.row * 8 + action.col
+    return V_WALL_OFFSET + action.row * 8 + action.col
 
 
 def decode(index: int) -> Action:
-    if index < 4:
-        dirs: list[Direction] = ["up", "down", "left", "right"]
-        return Move(direction=dirs[index], to=None)
-    if index < 68:
-        idx = index - 4
+    if index < H_WALL_OFFSET:
+        row, col = cell_from_index(index)
+        return Move(direction="up", to=(row, col))
+    if index < V_WALL_OFFSET:
+        idx = index - H_WALL_OFFSET
         return WallSlot(orientation="horizontal", row=idx // 8, col=idx % 8)
-    idx = index - 68
+    idx = index - V_WALL_OFFSET
     return WallSlot(orientation="vertical", row=idx // 8, col=idx % 8)
 
 

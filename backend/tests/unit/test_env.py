@@ -11,13 +11,13 @@ def test_env_step_valid_mask() -> None:
     env = QuoridorEnv()
     obs, info = env.reset(options={"agent_color": "white"})
     assert obs.shape == (135,)
-    assert info["action_masks"].shape == (132,)
+    assert info["action_masks"].shape == (209,)
     assert env._state.current_player == "white"
     legal = np.where(info["action_masks"])[0]
     obs2, reward, terminated, truncated, info2 = env.step(int(legal[0]))
     assert obs2.shape == (135,)
     assert not truncated
-    assert info2["action_masks"].shape == (132,)
+    assert info2["action_masks"].shape == (209,)
 
 
 def test_env_reward_when_agent_wins() -> None:
@@ -25,7 +25,7 @@ def test_env_reward_when_agent_wins() -> None:
     env.reset(options={"agent_color": "white"})
     env._state = QuoridorState(
         white=(1, 4),
-        black=(8, 0),
+        black=(5, 0),
         white_walls_remaining=10,
         black_walls_remaining=10,
         horizontal_walls=empty_walls(),
@@ -34,7 +34,7 @@ def test_env_reward_when_agent_wins() -> None:
     )
     obs, reward, terminated, truncated, info = env.step(encode(Move(direction="up", to=(0, 4))))
     assert obs.shape == (135,)
-    assert info["action_masks"].shape == (132,)
+    assert info["action_masks"].shape == (209,)
     assert reward == 1.0
     assert terminated
     assert not truncated
@@ -109,7 +109,7 @@ def test_step_ends_episode_on_opponent_turn() -> None:
     assert reward == -1.0
     assert terminated
     assert not truncated
-    assert info["action_masks"].shape == (132,)
+    assert info["action_masks"].shape == (209,)
 
 
 def test_mask_only_agent_legal_moves() -> None:

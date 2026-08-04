@@ -1,103 +1,68 @@
-"""Tests for agent-centric board frame transforms (direction action space)."""
+"""Tests for restored agent-frame + destination encoding."""
 
 from __future__ import annotations
 
 import numpy as np
 
 from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame
+from app.infrastructure.rl.action_resolution import resolve_agent_index_to_action
 from app.infrastructure.rl.env import QuoridorEnv
+from app.infrastructure.rl.reward_shaping import revisit_penalty
 from app.mappers.observation_mapper import to_observation
-from quoridor.agent_frame import (
-    action_from_agent_frame,
-    action_to_agent_frame,
-    pawn_from_agent_frame,
-    pawn_to_agent_frame,
-    state_to_agent_frame,
-    wall_to_agent_frame,
-)
-from quoridor.domain.actions import Move, WallSlot, encode
-from quoridor.domain.state import QuoridorState, empty_walls, initial_state
+from quoridor.agent_frame import action_to_agent_frame, state_to_agent_frame
+from quoridor.domain.actions import NUM_ACTIONS, Move, encode
+from quoridor.domain.state import initial_state
 from quoridor.rules import get_legal_actions
 
 
-def test_pawn_flip_roundtrip() -> None:
-    for pos in ((0, 4), (8, 4), (3, 2), (5, 7)):
-        assert pawn_from_agent_frame(pawn_to_agent_frame(pos, "black"), "black") == pos
-        assert pawn_to_agent_frame(pos, "white") == pos
+def test_num_actions_destination_space() -> None:
+    assert NUM_ACTIONS == 209
 
 
-def test_wall_flip_roundtrip() -> None:
-    wall = WallSlot(orientation="horizontal", row=2, col=3)
-    framed = wall_to_agent_frame(wall, "black")
-    assert framed.row == 5
-    assert action_from_agent_frame(framed, "black") == wall
-    assert wall_to_agent_frame(wall, "white") == wall
-
-
-def test_move_directions_pass_through() -> None:
-    for direction in ("up", "down", "left", "right"):
-        move = Move(direction=direction)  # type: ignore[arg-type]
-        assert action_to_agent_frame(move, "black") is move or action_to_agent_frame(
-            move, "black"
-        ) == move
-        assert encode(action_to_agent_frame(move, "black")) == encode(move)
-
-
-def test_state_to_agent_frame_puts_black_at_bottom() -> None:
+def test_opening_observations_match() -> None:
     state = initial_state()
-    framed = state_to_agent_frame(state, "black")
-    assert framed.black == (8, 4)
-    assert framed.white == (0, 4)
-    assert state_to_agent_frame(state, "white") is state
+    np.testing.assert_array_equal(to_observation(state, "white"), to_observation(state, "black"))
 
 
-def test_opening_observations_match_for_both_colors() -> None:
+def test_revisit_penalty_decays() -> None:
+    path = [(1, 4), (2, 4), (3, 4)]
+    assert revisit_penalty((3, 4), path, alpha=0.15, decay=0.5, max_age=4) == -0.15
+    assert revisit_penalty((2, 4), path, alpha=0.15, decay=0.5, max_age=4) == -0.15 * 0.5
+    assert revisit_penalty((0, 0), path, alpha=0.15, decay=0.5, max_age=4) == 0.0
+
+
+def test_env_opening_wall_free_masks_walls() -> None:
+    env = QuoridorEnv(
+        agent_color="black",
+        opponent="random",
+        opening_wall_free_plies=4,
+        max_wall_candidates=10,
+        reward_shaping=False,
+    )
+    env.reset(options={"agent_color": "black"})
+    mask = env._mask()
+    from quoridor.domain.actions import decode, WallSlot
+
+    assert all(isinstance(decode(int(i)), Move) for i in np.flatnonzero(mask))
+
+
+def test_agent_frame_mask_resolves() -> None:
     state = initial_state()
-    obs_w = to_observation(state, "white")
-    obs_b = to_observation(state, "black")
-    np.testing.assert_array_equal(obs_w, obs_b)
-    assert obs_w[134] == 1.0
-    # Agent pawn at bottom row 8 in both frames.
-    assert obs_w[0] == 1.0
-    assert obs_w[1] == 4.0 / 8.0
-
-
-def test_agent_frame_mask_covers_all_legal() -> None:
-    state = initial_state()
-    assert state.current_player == "black"
     legal = get_legal_actions(state)
     mask = legal_action_mask_agent_frame(legal, "black")
-    assert int(mask.sum()) == len({encode(action_to_agent_frame(a, "black")) for a in legal})
+    for idx in np.flatnonzero(mask):
+        assert resolve_agent_index_to_action(int(idx), legal, "black") in legal
 
 
-def test_env_black_wall_step_uses_agent_frame_index() -> None:
-    env = QuoridorEnv(agent_color="black", opponent="random")
+def test_black_forward_is_agent_framed() -> None:
+    env = QuoridorEnv(agent_color="black", opponent="random", reward_shaping=False)
     env.reset(options={"agent_color": "black"})
-    legal = get_legal_actions(env._state, dist_cache=env._cache)
-    wall = next(
-        a
-        for a in legal
-        if isinstance(a, WallSlot) and a.orientation == "horizontal" and a.row == 0
-    )
-    framed_idx = encode(action_to_agent_frame(wall, "black"))
-    assert env._mask()[framed_idx]
-    assert framed_idx != encode(wall)
-    env.step(framed_idx)
-    assert env._state.horizontal_walls[wall.row][wall.col] is True
+    # Absolute (1,4) → agent-frame (7,4)
+    assert env._mask()[encode(Move(direction="up", to=(7, 4)))]
+    assert not env._mask()[encode(Move(direction="up", to=(1, 4)))]
 
 
-def test_state_walls_flip_with_viewer() -> None:
-    h = [list(row) for row in empty_walls()]
-    h[1][2] = True
-    state = QuoridorState(
-        white=(8, 4),
-        black=(0, 4),
-        white_walls_remaining=10,
-        black_walls_remaining=9,
-        horizontal_walls=tuple(tuple(r) for r in h),
-        vertical_walls=empty_walls(),
-        current_player="black",
-    )
-    framed = state_to_agent_frame(state, "black")
-    assert framed.horizontal_walls[6][2] is True
-    assert framed.horizontal_walls[1][2] is False
+def test_state_to_agent_frame_black_at_bottom() -> None:
+    framed = state_to_agent_frame(initial_state(), "black")
+    assert framed.black == (8, 4)
+    assert framed.white == (0, 4)

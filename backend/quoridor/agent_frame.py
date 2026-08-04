@@ -3,9 +3,8 @@
 Canonical (absolute) board: White goal row 0, Black goal row 8.
 Agent frame: the acting color is mapped so its goal is always row 0.
 
-Move *directions* are already agent-semantic via ``absolute_delta`` (up = toward
-goal), so they pass through unchanged. Wall slots and pawn coordinates flip for
-Black. Use the same helpers for PPO obs/action masks and UI display.
+Destination-encoded moves and wall slots flip with the viewer. Use the same
+helpers for PPO obs/actions and for UI display when the human plays Black.
 """
 
 from __future__ import annotations
@@ -52,19 +51,18 @@ def wall_from_agent_frame(wall: WallSlot, viewer: Color) -> WallSlot:
 
 
 def action_to_agent_frame(action: Action, viewer: Color) -> Action:
-    """Map an absolute action into the viewer's agent frame.
-
-    Move directions are already relative to the acting color, so only wall
-    slots are transformed.
-    """
     if isinstance(action, Move):
-        return action
+        if action.to is None:
+            return action
+        return Move(direction=action.direction, to=pawn_to_agent_frame(action.to, viewer))
     return wall_to_agent_frame(action, viewer)
 
 
 def action_from_agent_frame(action: Action, viewer: Color) -> Action:
     if isinstance(action, Move):
-        return action
+        if action.to is None:
+            return action
+        return Move(direction=action.direction, to=pawn_from_agent_frame(action.to, viewer))
     return wall_from_agent_frame(action, viewer)
 
 
