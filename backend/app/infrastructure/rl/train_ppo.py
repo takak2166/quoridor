@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import threading
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
@@ -202,11 +203,25 @@ def _build_stages(
     return stages
 
 
-def _predict_action(model: MaskablePPO, obs: np.ndarray, mask: np.ndarray) -> int:
-    action, _ = model.predict(obs, action_masks=mask, deterministic=True)
-    if isinstance(action, np.ndarray):
-        return int(action.item() if action.ndim == 0 else action[0])
-    return int(action)
+def _predict_action(
+    model: MaskablePPO,
+    obs: np.ndarray,
+    mask: np.ndarray,
+    *,
+    lock: threading.Lock | None = None,
+) -> int:
+    """Predict a masked action. ``lock`` serializes shared-model smoke workers."""
+
+    def _predict() -> int:
+        action, _ = model.predict(obs, action_masks=mask, deterministic=True)
+        if isinstance(action, np.ndarray):
+            return int(action.item() if action.ndim == 0 else action[0])
+        return int(action)
+
+    if lock is None:
+        return _predict()
+    with lock:
+        return _predict()
 
 
 def _play_smoke_game(
@@ -218,6 +233,7 @@ def _play_smoke_game(
     max_wall_candidates: int | None,
     opening_wall_free_plies: int,
     seed: int,
+    predict_lock: threading.Lock | None = None,
 ) -> bool:
     env = QuoridorEnv(
         opponent=opponent,
@@ -235,7 +251,12 @@ def _play_smoke_game(
         obs, info = env.reset(seed=seed)
         terminated = False
         while not terminated:
-            action = _predict_action(model, obs, info["action_masks"])
+            action = _predict_action(
+                model,
+                obs,
+                info["action_masks"],
+                lock=predict_lock,
+            )
             obs, reward, terminated, _truncated, info = env.step(action)
         return reward > 0
     finally:
@@ -260,6 +281,8 @@ def smoke_win_rate(
     wins = 0
     completed = 0
     max_workers = min(workers, games)
+    # MaskablePPO.predict is not thread-safe; serialize shared-model calls.
+    predict_lock = threading.Lock()
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         futures = [
             executor.submit(
@@ -271,6 +294,7 @@ def smoke_win_rate(
                 max_wall_candidates=max_wall_candidates,
                 opening_wall_free_plies=opening_wall_free_plies,
                 seed=seed,
+                predict_lock=predict_lock,
             )
             for seed in range(games)
         ]
