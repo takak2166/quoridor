@@ -9,6 +9,7 @@ from concurrent.futures import ThreadPoolExecutor
 import numpy as np
 
 from app.infrastructure.rl.train_ppo import _predict_action
+from quoridor.domain.actions import FORWARD_STEP_INDEX, NUM_ACTIONS
 
 
 class _CountingModel:
@@ -26,16 +27,16 @@ class _CountingModel:
         time.sleep(0.05)
         with self._guard:
             self._active -= 1
-        # Always return a legal opening-style move index.
-        return np.array([67]), None
+        # Always return forward step in the relative action space.
+        return np.array([FORWARD_STEP_INDEX]), None
 
 
 def test_predict_action_lock_serializes_shared_model() -> None:
     model = _CountingModel()
     lock = threading.Lock()
     obs = np.zeros(4, dtype=np.float32)
-    mask = np.zeros(209, dtype=bool)
-    mask[67] = True
+    mask = np.zeros(NUM_ACTIONS, dtype=bool)
+    mask[FORWARD_STEP_INDEX] = True
 
     def worker() -> int:
         return _predict_action(model, obs, mask, lock=lock)  # type: ignore[arg-type]
@@ -43,15 +44,15 @@ def test_predict_action_lock_serializes_shared_model() -> None:
     with ThreadPoolExecutor(max_workers=4) as executor:
         results = list(executor.map(lambda _: worker(), range(8)))
 
-    assert results == [67] * 8
+    assert results == [FORWARD_STEP_INDEX] * 8
     assert model.max_active == 1
 
 
 def test_predict_action_without_lock_can_overlap() -> None:
     model = _CountingModel()
     obs = np.zeros(4, dtype=np.float32)
-    mask = np.zeros(209, dtype=bool)
-    mask[67] = True
+    mask = np.zeros(NUM_ACTIONS, dtype=bool)
+    mask[FORWARD_STEP_INDEX] = True
 
     def worker() -> int:
         return _predict_action(model, obs, mask)  # type: ignore[arg-type]

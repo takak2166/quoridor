@@ -138,23 +138,24 @@ def test_is_action_legal_matches_direction_and_to() -> None:
     assert not is_action_legal(case["state"], Move(direction="up", to=None))
 
 
-def test_action_mask_uses_unique_destination_indices() -> None:
-    """Destination action space: each Move destination has its own index."""
+def test_action_mask_uses_unique_delta_indices() -> None:
+    """Relative action space: each legal Move delta has its own index."""
     import numpy as np
 
     from quoridor.domain.actions import NUM_ACTIONS
 
     case = next(c for c in JUMP_CASES if c["id"] == "J.2-DIAG-BOTH")
     legal = get_legal_actions(case["state"])
+    from_pos = case["state"].pawn(case["state"].current_player)
     mask = np.zeros(NUM_ACTIONS, dtype=bool)
     for action in legal:
-        mask[encode(action)] = True
-    unique_indices = len({encode(a) for a in legal})
+        mask[encode(action, from_pos=from_pos)] = True
+    unique_indices = len({encode(a, from_pos=from_pos) for a in legal})
     assert mask.sum() == unique_indices
     assert unique_indices == len(legal)
     up_moves = [a for a in legal if isinstance(a, Move) and a.direction == "up"]
     assert len(up_moves) == 2
-    assert encode(up_moves[0]) != encode(up_moves[1])
+    assert encode(up_moves[0], from_pos=from_pos) != encode(up_moves[1], from_pos=from_pos)
 
 
 def test_walls_remaining_zero_rejects_wall() -> None:
@@ -178,8 +179,9 @@ def test_action_mask_shape_initial_state() -> None:
 
     state = initial_state()
     legal = get_legal_actions(state)
+    from_pos = state.pawn(state.current_player)
     mask = np.zeros(NUM_ACTIONS, dtype=bool)
     for action in legal:
-        mask[encode(action)] = True
+        mask[encode(action, from_pos=from_pos)] = True
     assert mask.shape == (NUM_ACTIONS,)
-    assert mask.sum() == len({encode(a) for a in legal})
+    assert mask.sum() == len({encode(a, from_pos=from_pos) for a in legal})

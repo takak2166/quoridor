@@ -3,13 +3,20 @@
 Canonical (absolute) board: White goal row 0, Black goal row 8.
 Agent frame: the acting color is mapped so its goal is always row 0.
 
-Destination-encoded moves and wall slots flip with the viewer. Use the same
-helpers for PPO obs/actions and for UI display when the human plays Black.
+Policy move actions are relative deltas in this frame (forward = decreasing row).
+Wall slots still flip with the viewer. Use the same helpers for PPO obs/actions
+and for UI display when the human plays Black.
 """
 
 from __future__ import annotations
 
-from quoridor.domain.actions import Action, Move, WallSlot, encode
+from quoridor.domain.actions import (
+    DELTA_TO_INDEX,
+    Action,
+    Move,
+    WallSlot,
+    encode,
+)
 from quoridor.domain.state import Color, QuoridorState, empty_walls
 
 
@@ -66,16 +73,25 @@ def action_from_agent_frame(action: Action, viewer: Color) -> Action:
     return wall_from_agent_frame(action, viewer)
 
 
-def action_index_to_agent_frame(index: int, viewer: Color) -> int:
-    from quoridor.domain.actions import decode
-
-    return encode(action_to_agent_frame(decode(index), viewer))
-
-
-def action_index_from_agent_frame(index: int, viewer: Color) -> int:
-    from quoridor.domain.actions import decode
-
-    return encode(action_from_agent_frame(decode(index), viewer))
+def encode_for_viewer(
+    action: Action,
+    from_pos: tuple[int, int],
+    viewer: Color,
+) -> int:
+    """Encode an absolute legal action into the viewer's agent-frame action index."""
+    if isinstance(action, Move):
+        if action.to is None:
+            raise ValueError("Move encoding requires explicit destination")
+        af_from = pawn_to_agent_frame(from_pos, viewer)
+        af_to = pawn_to_agent_frame(action.to, viewer)
+        delta = (af_to[0] - af_from[0], af_to[1] - af_from[1])
+        try:
+            return DELTA_TO_INDEX[delta]
+        except KeyError as exc:
+            raise ValueError(
+                f"Unsupported agent-frame delta {delta} from {af_from} to {af_to}"
+            ) from exc
+    return encode(wall_to_agent_frame(action, viewer))
 
 
 def _flip_wall_grid(

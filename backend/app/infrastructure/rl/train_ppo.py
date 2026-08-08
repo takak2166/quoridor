@@ -20,7 +20,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from app.infrastructure.rl.env import QuoridorEnv
 from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
-from quoridor.domain.actions import Move, decode
+from quoridor.domain.actions import is_move_index
 
 logger = logging.getLogger(__name__)
 
@@ -348,7 +348,7 @@ def initial_move_probability_mass(
 
         move_mass = 0.0
         for idx in np.where(mask)[0]:
-            if isinstance(decode(int(idx)), Move):
+            if is_move_index(int(idx)):
                 move_mass += float(probs[int(idx)])
         return move_mass
     finally:

@@ -19,7 +19,7 @@ from app.infrastructure.rl.reward_shaping import (
 )
 from app.infrastructure.rl.stuck_diagnostic import log_and_dump_stuck
 from app.mappers.observation_mapper import to_observation
-from quoridor.domain.actions import NUM_ACTIONS, Move, WallSlot, decode, encode
+from quoridor.domain.actions import NUM_ACTIONS, Move, WallSlot, decode, is_move_index
 from quoridor.domain.state import Color, initial_state
 from quoridor.pathfinding import SimpleDistanceCache
 from quoridor.rules import apply_action, check_winner, get_legal_actions
@@ -176,7 +176,7 @@ class QuoridorEnv(gym.Env):
             wall_idxs = [
                 int(i)
                 for i in np.flatnonzero(mask)
-                if isinstance(decode(int(i)), WallSlot)
+                if not is_move_index(int(i))
             ]
             logger.error(
                 "STEP_MASK_REJECT action=%s decoded=%s agent=%s turn=%s "
@@ -196,7 +196,12 @@ class QuoridorEnv(gym.Env):
             self.max_wall_candidates,
         )
         try:
-            move = resolve_agent_index_to_action(action, legal, self.agent_color)
+            move = resolve_agent_index_to_action(
+                action,
+                legal,
+                self.agent_color,
+                from_pos=self._state.pawn(self.agent_color),
+            )
         except ValueError as exc:
             logger.error("STEP_RESOLVE_FAIL action=%s err=%s — ending episode", action, exc)
             return self._obs(), -1.0, True, False, self._info()
@@ -352,7 +357,11 @@ class QuoridorEnv(gym.Env):
         )
         if self._agent_plies_played < self.opening_wall_free_plies:
             legal = [action for action in legal if isinstance(action, Move)]
-        return legal_action_mask_agent_frame(legal, self.agent_color)
+        return legal_action_mask_agent_frame(
+            legal,
+            self.agent_color,
+            from_pos=self._state.pawn(self.agent_color),
+        )
 
     def _info(self) -> dict[str, Any]:
         return {"action_masks": self._mask()}

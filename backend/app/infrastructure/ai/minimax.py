@@ -357,8 +357,9 @@ class EasyMinimaxPolicy:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for a in legal:
-            prior[encode(a)] = 1.0
+            prior[encode(a, from_pos=from_pos)] = 1.0
         if prior.sum() > 0:
             prior /= prior.sum()
         return prior
@@ -394,8 +395,9 @@ class VeryEasyMinimaxPolicy:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for a in legal:
-            prior[encode(a)] = 1.0
+            prior[encode(a, from_pos=from_pos)] = 1.0
         if prior.sum() > 0:
             prior /= prior.sum()
         return prior
@@ -465,8 +467,9 @@ class NormalMinimaxPolicy:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for a in legal:
-            prior[encode(a)] = 1.0
+            prior[encode(a, from_pos=from_pos)] = 1.0
         if prior.sum() > 0:
             prior /= prior.sum()
         return prior

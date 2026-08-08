@@ -1,4 +1,4 @@
-"""Tests for restored agent-frame + destination encoding."""
+"""Tests for agent-frame + relative delta action encoding."""
 
 from __future__ import annotations
 
@@ -9,14 +9,14 @@ from app.infrastructure.rl.action_resolution import resolve_agent_index_to_actio
 from app.infrastructure.rl.env import QuoridorEnv
 from app.infrastructure.rl.reward_shaping import revisit_penalty
 from app.mappers.observation_mapper import to_observation
-from quoridor.agent_frame import action_to_agent_frame, state_to_agent_frame
-from quoridor.domain.actions import NUM_ACTIONS, Move, encode
+from quoridor.agent_frame import pawn_to_agent_frame, state_to_agent_frame
+from quoridor.domain.actions import FORWARD_STEP_INDEX, NUM_ACTIONS, Move
 from quoridor.domain.state import initial_state
 from quoridor.rules import get_legal_actions
 
 
-def test_num_actions_destination_space() -> None:
-    assert NUM_ACTIONS == 209
+def test_num_actions_relative_delta_space() -> None:
+    assert NUM_ACTIONS == 140
 
 
 def test_opening_observations_match() -> None:
@@ -41,25 +41,55 @@ def test_env_opening_wall_free_masks_walls() -> None:
     )
     env.reset(options={"agent_color": "black"})
     mask = env._mask()
-    from quoridor.domain.actions import decode, WallSlot
+    from quoridor.domain.actions import is_move_index
 
-    assert all(isinstance(decode(int(i)), Move) for i in np.flatnonzero(mask))
+    assert all(is_move_index(int(i)) for i in np.flatnonzero(mask))
 
 
 def test_agent_frame_mask_resolves() -> None:
     state = initial_state()
     legal = get_legal_actions(state)
-    mask = legal_action_mask_agent_frame(legal, "black")
+    from_pos = state.pawn(state.current_player)
+    mask = legal_action_mask_agent_frame(legal, "black", from_pos=from_pos)
     for idx in np.flatnonzero(mask):
-        assert resolve_agent_index_to_action(int(idx), legal, "black") in legal
+        assert (
+            resolve_agent_index_to_action(int(idx), legal, "black", from_pos=from_pos)
+            in legal
+        )
 
 
 def test_black_forward_is_agent_framed() -> None:
     env = QuoridorEnv(agent_color="black", opponent="random", reward_shaping=False)
     env.reset(options={"agent_color": "black"})
-    # Absolute (1,4) → agent-frame (7,4)
-    assert env._mask()[encode(Move(direction="up", to=(7, 4)))]
-    assert not env._mask()[encode(Move(direction="up", to=(1, 4)))]
+    # Absolute forward for black is (+1,0); agent-frame forward is always index 0.
+    assert env._mask()[FORWARD_STEP_INDEX]
+    # Backward step must not be the only legal opening move.
+    assert env._mask().sum() >= 3
+
+
+def test_forward_step_same_index_for_both_colors() -> None:
+    for color in ("white", "black"):
+        env = QuoridorEnv(
+            agent_color=color,
+            opponent="random",
+            reward_shaping=False,
+            opening_wall_free_plies=2,
+        )
+        env.reset(seed=0, options={"agent_color": color})
+        assert env._mask()[FORWARD_STEP_INDEX]
+        legal = get_legal_actions(env._state)
+        resolved = resolve_agent_index_to_action(
+            FORWARD_STEP_INDEX,
+            legal,
+            color,
+            from_pos=env._state.pawn(color),
+        )
+        assert isinstance(resolved, Move)
+        assert resolved.to is not None
+        before = pawn_to_agent_frame(env._state.pawn(color), color)
+        after = pawn_to_agent_frame(resolved.to, color)
+        assert after[0] == before[0] - 1
+        env.close()
 
 
 def test_state_to_agent_frame_black_at_bottom() -> None:
