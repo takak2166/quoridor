@@ -480,7 +480,7 @@ def main() -> None:
     parser.add_argument("--gamma", type=float, default=0.99)
     parser.add_argument("--potential-scale", type=float, default=DEFAULT_POTENTIAL_SCALE)
     parser.add_argument("--max-wall-candidates", type=int, default=10)
-    parser.add_argument("--opening-wall-free-plies", type=int, default=8)
+    parser.add_argument("--opening-wall-free-plies", type=int, default=2)
     parser.add_argument("--revisit-alpha", type=float, default=0.150)
     parser.add_argument("--revisit-decay", type=float, default=0.500)
     parser.add_argument("--revisit-max-age", type=int, default=4)
