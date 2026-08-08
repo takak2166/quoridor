@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     trust_forwarded_for: bool = False
     require_hard_model_ready: bool = False
     require_expert_model_ready: bool = False
+    ppo_max_wall_candidates: int | None = 10
 
     @property
     def cors_origin_list(self) -> list[str]:

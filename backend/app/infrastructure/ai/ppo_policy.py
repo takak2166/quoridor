@@ -7,14 +7,16 @@ from dataclasses import dataclass, field
 import numpy as np
 from numpy.typing import NDArray
 
-from app.infrastructure.ai.action_mask import legal_action_mask
+from app.config import settings
+from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame, legal_actions_for_policy
 from app.infrastructure.ai.evaluation import StateEvaluator
 from app.infrastructure.ai.ppo_loader import ppo_model_store
+from app.infrastructure.rl.action_resolution import resolve_agent_index_to_action
 from app.mappers.observation_mapper import to_observation
-from quoridor.domain.actions import NUM_ACTIONS, Action, decode, encode
+from quoridor.agent_frame import encode_for_viewer
+from quoridor.domain.actions import NUM_ACTIONS, Action, encode
 from quoridor.domain.state import Color, QuoridorState
 from quoridor.pathfinding import SimpleDistanceCache
-from quoridor.rules import get_legal_actions
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +32,11 @@ class PPOPolicy:
         return ppo_model_store.is_available(self.model_path)
 
     def select_move(self, state: QuoridorState, color: Color) -> Action:
-        legal = get_legal_actions(state, dist_cache=self._dist_cache)
+        legal = legal_actions_for_policy(
+            state,
+            self._dist_cache,
+            settings.ppo_max_wall_candidates,
+        )
         if not legal:
             raise RuntimeError("no legal moves")
         if len(legal) == 1:
@@ -46,14 +52,20 @@ class PPOPolicy:
             self._warn_missing_once()
             self._record_fallback()
 
-        return self._select_with_prior(self._uniform_prior(legal), legal)
+        from_pos = state.pawn(color)
+        return self._select_with_prior(self._uniform_prior(legal, from_pos), legal, from_pos)
 
     def action_prior(self, state: QuoridorState, color: Color) -> NDArray[np.floating]:
-        legal = get_legal_actions(state, dist_cache=self._dist_cache)
+        legal = legal_actions_for_policy(
+            state,
+            self._dist_cache,
+            settings.ppo_max_wall_candidates,
+        )
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
         if not legal:
             return prior
 
+        from_pos = state.pawn(color)
         if self.is_available():
             try:
                 return self._prior_with_model(state, color, legal)
@@ -65,7 +77,7 @@ class PPOPolicy:
             self._record_fallback()
 
         for action in legal:
-            prior[encode(action)] = 1.0
+            prior[encode(action, from_pos=from_pos)] = 1.0
         prior /= prior.sum()
         return prior
 
@@ -83,16 +95,23 @@ class PPOPolicy:
 
     def _select_with_model(self, state: QuoridorState, color: Color, legal: list[Action]) -> Action:
         model = ppo_model_store.get(self.model_path)
+        from_pos = state.pawn(color)
         obs = to_observation(state, color)
-        mask = legal_action_mask(state, legal)
+        mask = legal_action_mask_agent_frame(legal, color, from_pos=from_pos)
         action_idx, _ = model.predict(obs, action_masks=mask, deterministic=True)
-        move = decode(int(action_idx))
-        candidates = [a for a in legal if encode(a) == encode(move)]
-        if len(candidates) == 1:
-            return candidates[0]
-        if len(candidates) > 1:
-            return random.choice(candidates)
-        return self._select_with_prior(self._prior_with_model(state, color, legal), legal)
+        try:
+            return resolve_agent_index_to_action(
+                int(action_idx),
+                legal,
+                color,
+                from_pos=from_pos,
+            )
+        except ValueError:
+            return self._select_with_prior(
+                self._prior_with_model(state, color, legal),
+                legal,
+                from_pos,
+            )
 
     def _prior_with_model(
         self,
@@ -103,19 +122,22 @@ class PPOPolicy:
         import torch
 
         model = ppo_model_store.get(self.model_path)
+        from_pos = state.pawn(color)
         obs = to_observation(state, color)
-        mask = legal_action_mask(state, legal)
+        mask = legal_action_mask_agent_frame(legal, color, from_pos=from_pos)
         obs_tensor = torch.as_tensor(obs, device=model.device).unsqueeze(0)
         mask_tensor = torch.as_tensor(mask, device=model.device).unsqueeze(0)
         with torch.no_grad():
             dist = model.policy.get_distribution(obs_tensor, action_masks=mask_tensor)
             probs = dist.distribution.probs.detach().cpu().numpy().reshape(-1)
+        # Expose prior in absolute-delta action space for search consumers.
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
         for action in legal:
-            prior[encode(action)] = float(probs[encode(action)])
+            framed_idx = encode_for_viewer(action, from_pos, color)
+            prior[encode(action, from_pos=from_pos)] = float(probs[framed_idx])
         if prior.sum() <= 0:
             for action in legal:
-                prior[encode(action)] = 1.0
+                prior[encode(action, from_pos=from_pos)] = 1.0
         prior /= prior.sum()
         return prior
 
@@ -129,11 +151,16 @@ class PPOPolicy:
             value = model.policy.predict_values(obs_tensor)
         return float(value.detach().cpu().numpy().reshape(-1)[0])
 
-    def _select_with_prior(self, prior: NDArray[np.floating], legal: list[Action]) -> Action:
+    def _select_with_prior(
+        self,
+        prior: NDArray[np.floating],
+        legal: list[Action],
+        from_pos: tuple[int, int],
+    ) -> Action:
         best_action: Action | None = None
         best_p = -1.0
         for action in legal:
-            p = float(prior[encode(action)])
+            p = float(prior[encode(action, from_pos=from_pos)])
             if p > best_p:
                 best_p = p
                 best_action = action
@@ -141,10 +168,14 @@ class PPOPolicy:
             return best_action
         return random.choice(legal)
 
-    def _uniform_prior(self, legal: list[Action]) -> NDArray[np.floating]:
+    def _uniform_prior(
+        self,
+        legal: list[Action],
+        from_pos: tuple[int, int],
+    ) -> NDArray[np.floating]:
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
         for action in legal:
-            prior[encode(action)] = 1.0
+            prior[encode(action, from_pos=from_pos)] = 1.0
         prior /= prior.sum()
         return prior
 

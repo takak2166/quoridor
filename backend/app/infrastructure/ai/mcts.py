@@ -39,7 +39,8 @@ def mcts_search(
 
     dist_cache = SimpleDistanceCache()
     root = _MCTSNode(state=state, parent=None, action=None, player=color, untried=list(legal_actions))
-    root_prior = _normalized_prior(prior_fn(state, color), legal_actions)
+    root_from = state.pawn(color)
+    root_prior = _normalized_prior(prior_fn(state, color), legal_actions, root_from)
     deadline = time.perf_counter() + budget_ms / 1000
     sims = 0
 
@@ -54,7 +55,16 @@ def mcts_search(
             path.append(node)
 
         if node.untried:
-            action = _pick_expansion(node, root_prior if node is root else prior_fn(node.state, color))
+            from_pos = node.state.pawn(node.player)
+            if node is root:
+                expansion_prior = root_prior
+            else:
+                expansion_prior = _normalized_prior(
+                    prior_fn(node.state, color),
+                    node.untried,
+                    from_pos,
+                )
+            action = _pick_expansion(node, expansion_prior, from_pos)
             current_state = apply_action(current_state, action)
             child = _MCTSNode(
                 state=current_state,
@@ -80,22 +90,31 @@ def mcts_search(
     return best.action  # type: ignore[return-value]
 
 
-def _normalized_prior(prior: NDArray[np.floating], legal_actions: list[Action]) -> dict[int, float]:
+def _normalized_prior(
+    prior: NDArray[np.floating],
+    legal_actions: list[Action],
+    from_pos: tuple[int, int],
+) -> dict[int, float]:
     weights: dict[int, float] = {}
     for action in legal_actions:
-        weights[encode(action)] = float(prior[encode(action)])
+        idx = encode(action, from_pos=from_pos)
+        weights[idx] = float(prior[idx])
     total = sum(weights.values())
     if total <= 0:
         uniform = 1.0 / len(legal_actions)
-        return {encode(action): uniform for action in legal_actions}
+        return {encode(action, from_pos=from_pos): uniform for action in legal_actions}
     return {idx: weight / total for idx, weight in weights.items()}
 
 
-def _pick_expansion(node: _MCTSNode, prior: dict[int, float]) -> Action:
+def _pick_expansion(
+    node: _MCTSNode,
+    prior: dict[int, float],
+    from_pos: tuple[int, int],
+) -> Action:
     if len(node.untried) == 1:
         return node.untried.pop()
 
-    weights = [prior.get(encode(action), 0.0) for action in node.untried]
+    weights = [prior.get(encode(action, from_pos=from_pos), 0.0) for action in node.untried]
     total = sum(weights)
     if total <= 0:
         return node.untried.pop(random.randrange(len(node.untried)))
@@ -112,12 +131,13 @@ def _pick_expansion(node: _MCTSNode, prior: dict[int, float]) -> Action:
 def _select_child(node: _MCTSNode, root_color: Color, c_puct: float, prior_fn) -> _MCTSNode:
     total = sum(child.visits for child in node.children.values())
     child_actions = [child.action for child in node.children.values() if child.action is not None]
-    prior = _normalized_prior(prior_fn(node.state, root_color), child_actions)
+    from_pos = node.state.pawn(node.player)
+    prior = _normalized_prior(prior_fn(node.state, root_color), child_actions, from_pos)
     best_score = -math.inf
     best_child = next(iter(node.children.values()))
     for child in node.children.values():
         q = child.value_sum / child.visits if child.visits else 0.0
-        p = prior.get(encode(child.action), 0.0)  # type: ignore[arg-type]
+        p = prior.get(encode(child.action, from_pos=from_pos), 0.0)  # type: ignore[arg-type]
         u = c_puct * p * math.sqrt(total + 1) / (1 + child.visits)
         score = q + u
         if score > best_score:

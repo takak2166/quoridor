@@ -56,12 +56,14 @@ JUMP_CASES = [
     },
     {
         "id": "J.4-BLOCK",
+        # Both lateral sides of the opponent are walled off (V left + V right),
+        # so neither diagonal jump is legal after the rear wall blocks the straight jump.
         "state": build_state(
             white=(5, 4),
             black=(4, 4),
             current="white",
             h=frozenset({(3, 4)}),
-            v=frozenset({(4, 4)}),
+            v=frozenset({(4, 3), (4, 4)}),
         ),
         "direction": "up",
         "expected_destinations": frozenset(),
@@ -70,7 +72,7 @@ JUMP_CASES = [
         "id": "J.5-EDGE",
         "state": build_state(white=(5, 0), black=(4, 0), current="white"),
         "direction": "up",
-        "expected_destinations": frozenset({(4, 1)}),
+        "expected_destinations": frozenset({(3, 0)}),
     },
     {
         "id": "J.6-APPROACH",

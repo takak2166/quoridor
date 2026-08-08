@@ -14,8 +14,9 @@ class FakeAi:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for action in legal:
-            prior[encode(action)] = 1.0
+            prior[encode(action, from_pos=from_pos)] = 1.0
         prior /= prior.sum()
         return prior
 
