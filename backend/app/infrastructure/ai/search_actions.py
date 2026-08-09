@@ -125,11 +125,18 @@ def prioritize_wall_actions(
     walls: list[WallSlot],
     cache: DistanceCache | None,
     limit: int,
+    *,
+    require_path_lengthening: bool = False,
 ) -> list[WallSlot]:
     if limit <= 0 or not walls:
         return []
+    candidates = walls
+    if require_path_lengthening:
+        candidates = [wall for wall in walls if enemy_path_delta(state, wall, cache) > 0]
+        if not candidates:
+            return []
     ranked = sorted(
-        walls,
+        candidates,
         key=lambda wall: (
             -wall_strategic_score(state, wall, cache),
             wall.row,
@@ -146,9 +153,20 @@ def search_actions(
     cache: DistanceCache | None,
     max_wall_candidates: int,
 ) -> list[Action]:
-    """All pawn moves plus the top wall candidates by opponent path lengthening."""
+    """All pawn moves plus effective wall candidates.
+
+    Walls are restricted to those that strictly increase the opponent's shortest
+    path (``enemy_path_delta > 0``), then capped to ``max_wall_candidates``.
+    If no wall lengthens the enemy path, only pawn moves are returned.
+    """
     moves, walls = split_legal_actions(legal)
     if max_wall_candidates <= 0:
         return list(moves)
-    top_walls = prioritize_wall_actions(state, walls, cache, max_wall_candidates)
+    top_walls = prioritize_wall_actions(
+        state,
+        walls,
+        cache,
+        max_wall_candidates,
+        require_path_lengthening=True,
+    )
     return [*moves, *top_walls]
