@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import logging
 import threading
+import time
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
@@ -20,6 +21,7 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
 from app.infrastructure.rl.env import QuoridorEnv
 from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
+from app.infrastructure.rl.train_notify import notify_training_finished
 from quoridor.domain.actions import is_move_index
 
 logger = logging.getLogger(__name__)
@@ -530,6 +532,12 @@ def main() -> None:
         help="Load MaskablePPO zip and continue curriculum from this checkpoint",
     )
     parser.add_argument("--tb-log", type=str, default="runs/quoridor")
+    parser.add_argument(
+        "--webhook-url",
+        type=str,
+        default=None,
+        help="POST completion JSON here (overrides QUORIDOR_TRAIN_WEBHOOK_URL)",
+    )
     args = parser.parse_args()
 
     curriculum = args.curriculum.strip() if args.curriculum is not None else None
@@ -553,6 +561,9 @@ def main() -> None:
 
     model: MaskablePPO | None = None
     current_env: MaskDiagnosticVecEnv | None = None
+    started_at = time.monotonic()
+    notify_status = "failed"
+    notify_error: str | None = None
 
     try:
         for stage_i, stage in enumerate(stages, start=1):
@@ -696,9 +707,31 @@ def main() -> None:
         out.parent.mkdir(parents=True, exist_ok=True)
         model.save(str(out))
         print(f"Saved model to {out}")
+        notify_status = "success"
+    except SystemExit as exc:
+        code = exc.code
+        notify_error = f"SystemExit({code})"
+        if code not in (0, None):
+            notify_status = "failed"
+        else:
+            notify_status = "success"
+        raise
+    except Exception as exc:
+        notify_status = "failed"
+        notify_error = f"{type(exc).__name__}: {exc}"
+        raise
     finally:
         if current_env is not None:
             current_env.close()
+        notify_training_finished(
+            webhook_url=args.webhook_url,
+            status=notify_status,
+            output=args.output,
+            curriculum=curriculum,
+            timesteps=args.timesteps,
+            elapsed_sec=time.monotonic() - started_at,
+            error=notify_error,
+        )
 
 
 if __name__ == "__main__":
