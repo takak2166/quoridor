@@ -120,6 +120,134 @@ def wall_strategic_score(
     return delta * 100 + blocked * 10 + corridor
 
 
+def _enemy_distance(
+    state: QuoridorState,
+    cache: DistanceCache | None,
+) -> int | None:
+    dist_white, dist_black = distances(state, cache)
+    return dist_black if state.current_player == "white" else dist_white
+
+
+def enemy_two_wall_path_delta(
+    state: QuoridorState,
+    wall1: WallSlot,
+    wall2: WallSlot,
+    cache: DistanceCache | None = None,
+) -> int:
+    """Enemy shortest-path growth after placing ``wall1`` then ``wall2``."""
+    from quoridor.rules import is_action_legal
+
+    before = _enemy_distance(state, cache)
+    if before is None:
+        return 0
+    temp = state.with_wall(wall1.orientation, wall1.row, wall1.col)
+    if not is_action_legal(temp, wall2):
+        return 0
+    temp2 = temp.with_wall(wall2.orientation, wall2.row, wall2.col)
+    after = _enemy_distance(temp2, cache)
+    if after is None:
+        return 0
+    return max(0, after - before)
+
+
+def wall_enables_path_lengthening(
+    state: QuoridorState,
+    wall: WallSlot,
+    partner_walls: list[WallSlot],
+    cache: DistanceCache | None = None,
+    *,
+    enemy_before: int | None = None,
+) -> bool:
+    """True if ``wall`` alone, or with some partner, lengthens the enemy path."""
+    from quoridor.rules import is_action_legal
+
+    if enemy_path_delta(state, wall, cache) > 0:
+        return True
+    before = enemy_before if enemy_before is not None else _enemy_distance(state, cache)
+    if before is None:
+        return False
+    # Skip walls that do not touch any current shortest-path edge: they are
+    # unlikely first moves of a two-wall block and are expensive to pair-search.
+    if shortest_path_edges_blocked(state, wall, cache) <= 0:
+        return False
+    temp = state.with_wall(wall.orientation, wall.row, wall.col)
+    for partner in partner_walls:
+        if (
+            partner.orientation == wall.orientation
+            and partner.row == wall.row
+            and partner.col == wall.col
+        ):
+            continue
+        if not is_action_legal(temp, partner):
+            continue
+        temp2 = temp.with_wall(partner.orientation, partner.row, partner.col)
+        after = _enemy_distance(temp2, cache)
+        if after is not None and after > before:
+            return True
+    return False
+
+
+def select_path_affecting_walls(
+    state: QuoridorState,
+    walls: list[WallSlot],
+    cache: DistanceCache | None,
+    limit: int,
+    *,
+    allow_two_wall_setup: bool = True,
+    setup_partner_limit: int = 16,
+) -> list[WallSlot]:
+    """Walls that lengthen the enemy path alone, or as the first of a 2-wall combo."""
+    if limit <= 0 or not walls:
+        return []
+
+    singles: list[WallSlot] = []
+    zero_delta: list[WallSlot] = []
+    for wall in walls:
+        if enemy_path_delta(state, wall, cache) > 0:
+            singles.append(wall)
+        else:
+            zero_delta.append(wall)
+
+    setups: list[WallSlot] = []
+    if allow_two_wall_setup and zero_delta:
+        enemy_before = _enemy_distance(state, cache)
+        partner_pool = sorted(
+            walls,
+            key=lambda wall: (
+                -corridor_wall_pressure(state, wall),
+                -shortest_path_edges_blocked(state, wall, cache),
+                wall.row,
+                wall.col,
+                wall.orientation,
+            ),
+        )[:setup_partner_limit]
+        # Prefer completing combos with already-known single lengtheners.
+        partners = list(dict.fromkeys([*singles, *partner_pool]))
+        for wall in zero_delta:
+            if wall_enables_path_lengthening(
+                state,
+                wall,
+                partners,
+                cache,
+                enemy_before=enemy_before,
+            ):
+                setups.append(wall)
+
+    candidates = [*singles, *setups]
+    if not candidates:
+        return []
+    ranked = sorted(
+        candidates,
+        key=lambda wall: (
+            -wall_strategic_score(state, wall, cache),
+            wall.row,
+            wall.col,
+            wall.orientation,
+        ),
+    )
+    return ranked[:limit]
+
+
 def prioritize_wall_actions(
     state: QuoridorState,
     walls: list[WallSlot],
@@ -130,13 +258,16 @@ def prioritize_wall_actions(
 ) -> list[WallSlot]:
     if limit <= 0 or not walls:
         return []
-    candidates = walls
     if require_path_lengthening:
-        candidates = [wall for wall in walls if enemy_path_delta(state, wall, cache) > 0]
-        if not candidates:
-            return []
+        return select_path_affecting_walls(
+            state,
+            walls,
+            cache,
+            limit,
+            allow_two_wall_setup=True,
+        )
     ranked = sorted(
-        candidates,
+        walls,
         key=lambda wall: (
             -wall_strategic_score(state, wall, cache),
             wall.row,
@@ -153,11 +284,11 @@ def search_actions(
     cache: DistanceCache | None,
     max_wall_candidates: int,
 ) -> list[Action]:
-    """All pawn moves plus effective wall candidates.
+    """All pawn moves plus path-affecting wall candidates.
 
-    Walls are restricted to those that strictly increase the opponent's shortest
-    path (``enemy_path_delta > 0``), then capped to ``max_wall_candidates``.
-    If no wall lengthens the enemy path, only pawn moves are returned.
+    A wall is kept if it alone increases the opponent's shortest path, or if it
+    is the first stone of a two-wall combo that does. Results are capped to
+    ``max_wall_candidates``. If none qualify, only pawn moves are returned.
     """
     moves, walls = split_legal_actions(legal)
     if max_wall_candidates <= 0:
