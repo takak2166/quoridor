@@ -8,6 +8,7 @@ import os
 import socket
 import urllib.error
 import urllib.request
+from pathlib import Path
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -16,10 +17,35 @@ ENV_WEBHOOK_URL = "QUORIDOR_TRAIN_WEBHOOK_URL"
 DEFAULT_TIMEOUT_SEC = 10.0
 
 
+def _load_dotenv_files() -> None:
+    """Load repo/backend ``.env`` without overriding existing process env."""
+    try:
+        from dotenv import load_dotenv
+    except ImportError:
+        return
+    here = Path(__file__).resolve()
+    candidates = (
+        here.parents[4] / ".env",  # repo root
+        here.parents[3] / ".env",  # backend/
+        Path.cwd() / ".env",
+    )
+    seen: set[Path] = set()
+    for path in candidates:
+        resolved = path.resolve()
+        if resolved in seen or not path.is_file():
+            continue
+        seen.add(resolved)
+        load_dotenv(path, override=False)
+
+
 def resolve_webhook_url(cli_url: str | None = None) -> str | None:
-    """Prefer CLI override, then ``QUORIDOR_TRAIN_WEBHOOK_URL``."""
+    """Prefer CLI override, then ``QUORIDOR_TRAIN_WEBHOOK_URL`` (env / ``.env``)."""
     if cli_url is not None and cli_url.strip():
         return cli_url.strip()
+    env = os.environ.get(ENV_WEBHOOK_URL, "").strip()
+    if env:
+        return env
+    _load_dotenv_files()
     env = os.environ.get(ENV_WEBHOOK_URL, "").strip()
     return env or None
 

@@ -17,8 +17,9 @@ def test_resolve_webhook_url_prefers_cli_over_env(monkeypatch) -> None:
     assert resolve_webhook_url("https://cli.example/hook") == "https://cli.example/hook"
     assert resolve_webhook_url(None) == "https://env.example/hook"
     monkeypatch.delenv(ENV_WEBHOOK_URL, raising=False)
-    assert resolve_webhook_url(None) is None
-    assert resolve_webhook_url("  ") is None
+    with patch("app.infrastructure.rl.train_notify._load_dotenv_files"):
+        assert resolve_webhook_url(None) is None
+        assert resolve_webhook_url("  ") is None
 
 
 def test_build_payload_includes_slack_and_discord_fields() -> None:
@@ -59,7 +60,10 @@ def test_post_webhook_posts_json() -> None:
 
 def test_notify_training_finished_noop_without_url(monkeypatch) -> None:
     monkeypatch.delenv(ENV_WEBHOOK_URL, raising=False)
-    with patch("app.infrastructure.rl.train_notify.post_webhook") as post:
+    with (
+        patch("app.infrastructure.rl.train_notify._load_dotenv_files"),
+        patch("app.infrastructure.rl.train_notify.post_webhook") as post,
+    ):
         assert (
             notify_training_finished(
                 webhook_url=None,
@@ -94,3 +98,23 @@ def test_notify_training_finished_uses_env(monkeypatch) -> None:
     payload = post.call_args.args[1]
     assert payload["status"] == "failed"
     assert "SystemExit(1)" in payload["text"]
+
+
+def test_resolve_webhook_url_reads_repo_dotenv(monkeypatch, tmp_path) -> None:
+    monkeypatch.delenv(ENV_WEBHOOK_URL, raising=False)
+    env_file = tmp_path / ".env"
+    env_file.write_text(
+        f"{ENV_WEBHOOK_URL}=https://hooks.example/from-dotenv\n",
+        encoding="utf-8",
+    )
+
+    def _load() -> None:
+        from dotenv import load_dotenv
+
+        load_dotenv(env_file, override=False)
+
+    with patch(
+        "app.infrastructure.rl.train_notify._load_dotenv_files",
+        side_effect=_load,
+    ):
+        assert resolve_webhook_url(None) == "https://hooks.example/from-dotenv"
