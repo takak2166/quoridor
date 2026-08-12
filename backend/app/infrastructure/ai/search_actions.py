@@ -5,6 +5,12 @@ from quoridor.domain.actions import Action, Move, WallSlot
 from quoridor.domain.state import GOAL_ROW, Color, QuoridorState
 from quoridor.pathfinding import DistanceCache, distance_map, distances
 
+# Caps for two-wall setup search. Full pairwise search is too slow for PPO masks.
+DEFAULT_SETUP_CANDIDATE_LIMIT = 4
+DEFAULT_SETUP_PARTNER_LIMIT = 4
+# Ignore path-touching walls farther than this Chebyshev distance from each other.
+DEFAULT_SETUP_PARTNER_RADIUS = 2
+
 
 def split_legal_actions(legal: list[Action]) -> tuple[list[Move], list[WallSlot]]:
     moves: list[Move] = []
@@ -49,10 +55,12 @@ def shortest_path_edges_blocked(
     state: QuoridorState,
     wall: WallSlot,
     cache: DistanceCache | None = None,
+    *,
+    opponent_dist: dict[tuple[int, int], int] | None = None,
 ) -> int:
     """Count opponent shortest-path edges this wall would block (even if alternate paths exist)."""
     player = state.current_player
-    dist = _opponent_distances(state, player)
+    dist = opponent_dist if opponent_dist is not None else _opponent_distances(state, player)
     if not dist:
         return 0
     goal_row = GOAL_ROW[opponent(player)]
@@ -113,9 +121,14 @@ def wall_strategic_score(
     state: QuoridorState,
     wall: WallSlot,
     cache: DistanceCache | None = None,
+    *,
+    delta: int | None = None,
+    blocked: int | None = None,
 ) -> int:
-    delta = enemy_path_delta(state, wall, cache)
-    blocked = shortest_path_edges_blocked(state, wall, cache)
+    if delta is None:
+        delta = enemy_path_delta(state, wall, cache)
+    if blocked is None:
+        blocked = shortest_path_edges_blocked(state, wall, cache)
     corridor = corridor_wall_pressure(state, wall)
     return delta * 100 + blocked * 10 + corridor
 
@@ -126,6 +139,14 @@ def _enemy_distance(
 ) -> int | None:
     dist_white, dist_black = distances(state, cache)
     return dist_black if state.current_player == "white" else dist_white
+
+
+def _wall_key(wall: WallSlot) -> tuple[str, int, int]:
+    return (wall.orientation, wall.row, wall.col)
+
+
+def _walls_near(a: WallSlot, b: WallSlot, radius: int) -> bool:
+    return max(abs(a.row - b.row), abs(a.col - b.col)) <= radius
 
 
 def enemy_two_wall_path_delta(
@@ -157,6 +178,8 @@ def wall_enables_path_lengthening(
     cache: DistanceCache | None = None,
     *,
     enemy_before: int | None = None,
+    blocked: int | None = None,
+    opponent_dist: dict[tuple[int, int], int] | None = None,
 ) -> bool:
     """True if ``wall`` alone, or with some partner, lengthens the enemy path."""
     from quoridor.rules import is_action_legal
@@ -168,15 +191,16 @@ def wall_enables_path_lengthening(
         return False
     # Skip walls that do not touch any current shortest-path edge: they are
     # unlikely first moves of a two-wall block and are expensive to pair-search.
-    if shortest_path_edges_blocked(state, wall, cache) <= 0:
+    if blocked is None:
+        blocked = shortest_path_edges_blocked(
+            state, wall, cache, opponent_dist=opponent_dist
+        )
+    if blocked <= 0:
         return False
     temp = state.with_wall(wall.orientation, wall.row, wall.col)
+    wall_id = _wall_key(wall)
     for partner in partner_walls:
-        if (
-            partner.orientation == wall.orientation
-            and partner.row == wall.row
-            and partner.col == wall.col
-        ):
+        if _wall_key(partner) == wall_id:
             continue
         if not is_action_legal(temp, partner):
             continue
@@ -187,6 +211,16 @@ def wall_enables_path_lengthening(
     return False
 
 
+def _rank_key_for_setup(state: QuoridorState, wall: WallSlot, blocked: int) -> tuple:
+    return (
+        -corridor_wall_pressure(state, wall),
+        -blocked,
+        wall.row,
+        wall.col,
+        wall.orientation,
+    )
+
+
 def select_path_affecting_walls(
     state: QuoridorState,
     walls: list[WallSlot],
@@ -194,52 +228,123 @@ def select_path_affecting_walls(
     limit: int,
     *,
     allow_two_wall_setup: bool = True,
-    setup_partner_limit: int = 16,
+    setup_candidate_limit: int = DEFAULT_SETUP_CANDIDATE_LIMIT,
+    setup_partner_limit: int = DEFAULT_SETUP_PARTNER_LIMIT,
+    setup_partner_radius: int = DEFAULT_SETUP_PARTNER_RADIUS,
+    verify_two_wall_pairs: bool = False,
+    max_pair_checks: int = 4,
 ) -> list[WallSlot]:
-    """Walls that lengthen the enemy path alone, or as the first of a 2-wall combo."""
+    """Walls that lengthen the enemy path alone, or likely 2-wall setup stones.
+
+    For PPO masks, two-wall setups are chosen heuristically: zero-delta walls that
+    (1) sit in the enemy corridor and (2) touch a current shortest-path edge.
+    Optional pair verification is off by default because full pair BFS is too
+    expensive for per-step action masks.
+    """
     if limit <= 0 or not walls:
         return []
 
+    deltas: dict[tuple[str, int, int], int] = {}
     singles: list[WallSlot] = []
     zero_delta: list[WallSlot] = []
     for wall in walls:
-        if enemy_path_delta(state, wall, cache) > 0:
+        delta = enemy_path_delta(state, wall, cache)
+        deltas[_wall_key(wall)] = delta
+        if delta > 0:
             singles.append(wall)
         else:
             zero_delta.append(wall)
 
     setups: list[WallSlot] = []
-    if allow_two_wall_setup and zero_delta:
-        enemy_before = _enemy_distance(state, cache)
-        partner_pool = sorted(
-            walls,
-            key=lambda wall: (
-                -corridor_wall_pressure(state, wall),
-                -shortest_path_edges_blocked(state, wall, cache),
-                wall.row,
-                wall.col,
-                wall.orientation,
-            ),
-        )[:setup_partner_limit]
-        # Prefer completing combos with already-known single lengtheners.
-        partners = list(dict.fromkeys([*singles, *partner_pool]))
-        for wall in zero_delta:
-            if wall_enables_path_lengthening(
-                state,
-                wall,
-                partners,
-                cache,
-                enemy_before=enemy_before,
-            ):
-                setups.append(wall)
+    blocked_by_key: dict[tuple[str, int, int], int] = {}
+    remaining = limit - len(singles)
+    if allow_two_wall_setup and zero_delta and remaining > 0:
+        opponent_dist = _opponent_distances(state, state.current_player)
+        corridor_zeros = [
+            wall for wall in zero_delta if corridor_wall_pressure(state, wall) > 0
+        ]
+        if not corridor_zeros:
+            corridor_zeros = zero_delta
+
+        scored_zeros: list[tuple[WallSlot, int]] = []
+        for wall in corridor_zeros:
+            blocked = shortest_path_edges_blocked(
+                state, wall, cache, opponent_dist=opponent_dist
+            )
+            blocked_by_key[_wall_key(wall)] = blocked
+            if blocked > 0:
+                scored_zeros.append((wall, blocked))
+        scored_zeros.sort(key=lambda item: _rank_key_for_setup(state, item[0], item[1]))
+        setup_pool = scored_zeros[: max(0, min(setup_candidate_limit, remaining))]
+
+        if verify_two_wall_pairs:
+            enemy_before = _enemy_distance(state, cache)
+            partner_scored: list[tuple[WallSlot, int]] = list(scored_zeros)
+            for wall in singles:
+                blocked = blocked_by_key.get(_wall_key(wall))
+                if blocked is None:
+                    blocked = shortest_path_edges_blocked(
+                        state, wall, cache, opponent_dist=opponent_dist
+                    )
+                    blocked_by_key[_wall_key(wall)] = blocked
+                partner_scored.append((wall, blocked))
+            partner_scored.sort(
+                key=lambda item: _rank_key_for_setup(state, item[0], item[1])
+            )
+            checks = 0
+            for wall, blocked in setup_pool:
+                if checks >= max_pair_checks:
+                    break
+                local_partners = [
+                    partner
+                    for partner, _ in partner_scored
+                    if _wall_key(partner) != _wall_key(wall)
+                    and _walls_near(wall, partner, setup_partner_radius)
+                ][: max(0, setup_partner_limit)]
+                if not local_partners:
+                    local_partners = [
+                        partner
+                        for partner, _ in partner_scored
+                        if _wall_key(partner) != _wall_key(wall)
+                    ][: max(0, setup_partner_limit)]
+                # Bound verification cost.
+                budgeted = []
+                for partner in local_partners:
+                    if checks >= max_pair_checks:
+                        break
+                    checks += 1
+                    budgeted.append(partner)
+                if wall_enables_path_lengthening(
+                    state,
+                    wall,
+                    budgeted,
+                    cache,
+                    enemy_before=enemy_before,
+                    blocked=blocked,
+                    opponent_dist=opponent_dist,
+                ):
+                    setups.append(wall)
+        else:
+            setups = [wall for wall, _ in setup_pool]
 
     candidates = [*singles, *setups]
     if not candidates:
         return []
+
+    def _score(wall: WallSlot) -> int:
+        key = _wall_key(wall)
+        return wall_strategic_score(
+            state,
+            wall,
+            cache,
+            delta=deltas.get(key),
+            blocked=blocked_by_key.get(key),
+        )
+
     ranked = sorted(
         candidates,
         key=lambda wall: (
-            -wall_strategic_score(state, wall, cache),
+            -_score(wall),
             wall.row,
             wall.col,
             wall.orientation,
@@ -287,7 +392,7 @@ def search_actions(
     """All pawn moves plus path-affecting wall candidates.
 
     A wall is kept if it alone increases the opponent's shortest path, or if it
-    is the first stone of a two-wall combo that does. Results are capped to
+    is the first stone of a capped two-wall combo that does. Results are capped to
     ``max_wall_candidates``. If none qualify, only pawn moves are returned.
     """
     moves, walls = split_legal_actions(legal)

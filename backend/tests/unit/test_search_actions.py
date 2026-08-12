@@ -36,31 +36,14 @@ def test_search_actions_includes_all_moves_and_caps_walls() -> None:
     assert all(a in effective for a in filtered_walls)
 
 
-def test_search_actions_keeps_single_or_two_wall_setups_only() -> None:
-    from app.infrastructure.ai.search_actions import (
-        enemy_path_delta,
-        search_actions,
-        split_legal_actions,
-        wall_enables_path_lengthening,
-    )
-
-    state = build_state(current="black")
-    legal = get_legal_actions(state)
-    _, walls = split_legal_actions(legal)
-    filtered = search_actions(state, legal, cache=None, max_wall_candidates=64)
-    filtered_walls = [a for a in filtered if isinstance(a, WallSlot)]
-    assert filtered_walls
-    for wall in filtered_walls:
-        assert wall_enables_path_lengthening(state, wall, walls, cache=None)
-
-
 def test_two_wall_setup_included_when_single_delta_is_zero() -> None:
-    """A wall with alone-Δ=0 is kept if some partner makes enemy path longer."""
+    """Path-touching corridor walls with alone-Δ=0 are kept as 2-wall setups."""
     from app.infrastructure.ai.search_actions import (
         enemy_path_delta,
         enemy_two_wall_path_delta,
         search_actions,
         select_path_affecting_walls,
+        shortest_path_edges_blocked,
         split_legal_actions,
     )
 
@@ -68,6 +51,7 @@ def test_two_wall_setup_included_when_single_delta_is_zero() -> None:
     setup = WallSlot(orientation="vertical", row=3, col=3)
     partner = WallSlot(orientation="horizontal", row=3, col=4)
     assert enemy_path_delta(state, setup, cache=None) == 0
+    assert shortest_path_edges_blocked(state, setup, cache=None) > 0
     assert enemy_two_wall_path_delta(state, setup, partner, cache=None) > 0
 
     legal = get_legal_actions(state)
@@ -85,6 +69,23 @@ def test_two_wall_setup_included_when_single_delta_is_zero() -> None:
 
     filtered = search_actions(state, legal, cache=None, max_wall_candidates=20)
     assert setup in [a for a in filtered if isinstance(a, WallSlot)]
+
+
+def test_search_actions_keeps_single_or_setup_walls_only() -> None:
+    from app.infrastructure.ai.search_actions import (
+        search_actions,
+        select_path_affecting_walls,
+        split_legal_actions,
+    )
+
+    state = build_state(current="black")
+    legal = get_legal_actions(state)
+    _, walls = split_legal_actions(legal)
+    allowed = set(select_path_affecting_walls(state, walls, cache=None, limit=64))
+    filtered = search_actions(state, legal, cache=None, max_wall_candidates=64)
+    filtered_walls = [a for a in filtered if isinstance(a, WallSlot)]
+    assert filtered_walls
+    assert all(wall in allowed for wall in filtered_walls)
 
 
 def test_two_phase_root_prefers_blocking_wall_in_corridor() -> None:
