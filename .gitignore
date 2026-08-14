@@ -47,6 +47,8 @@ frontend/playwright/.cache/
 models/*.zip
 models/*.onnx
 !models/.gitkeep
+!models/quoridor_ppo_v1.zip
+!models/quoridor_ppo_best.zip
 
 # --- OS / IDE ---
 .DS_Store

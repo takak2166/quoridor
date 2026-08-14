@@ -67,6 +67,8 @@ make train-ppo-expert TIMESTEPS=300000
 make eval-selfplay GAMES=100 DIFF_A=hard DIFF_B=normal MIN_WIN_RATE=0.70 MAX_P99_MS=3000
 ```
 
+Hard uses `models/quoridor_ppo_v1.zip` (MaskablePPO). Expert uses `models/quoridor_ppo_best.zip` as the PPO prior inside MCTS. If a zip is missing or `sb3_contrib` is not installed, Hard/Expert fall back to Normal minimax and increment `ai_fallback_total`; `/health` then reports `effective_ai.hard=minimax_fallback` or `effective_ai.expert=unavailable`.
+
 ## Other
 
 ```bash
