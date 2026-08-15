@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.config import settings
+from app.infrastructure.ai.action_mask import legal_actions_for_policy
 from app.infrastructure.ai.mcts import mcts_search
 from app.infrastructure.ai.minimax import (
     EasyMinimaxPolicy,
@@ -15,7 +16,6 @@ from app.infrastructure.ai.ppo_policy import PPOPolicy
 from app.ports.ai_policy import AiPolicy
 from quoridor.domain.actions import Action
 from quoridor.domain.state import Color, QuoridorState
-from quoridor.rules import get_legal_actions
 
 _POLICY_CACHE: dict[str, AiPolicy] = {}
 
@@ -159,7 +159,13 @@ class ExpertMCTSPolicy:
         )
 
     def select_move(self, state: QuoridorState, color: Color) -> Action:
-        legal = get_legal_actions(state)
+        legal = legal_actions_for_policy(
+            state,
+            None,
+            settings.ppo_max_wall_candidates,
+            color=color,
+            opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
+        )
         if not legal:
             raise RuntimeError("no legal moves")
         if len(legal) == 1:

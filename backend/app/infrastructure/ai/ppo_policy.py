@@ -36,6 +36,8 @@ class PPOPolicy:
             state,
             self._dist_cache,
             settings.ppo_max_wall_candidates,
+            color=color,
+            opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
         )
         if not legal:
             raise RuntimeError("no legal moves")
@@ -60,6 +62,8 @@ class PPOPolicy:
             state,
             self._dist_cache,
             settings.ppo_max_wall_candidates,
+            color=color,
+            opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
         )
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
         if not legal:
