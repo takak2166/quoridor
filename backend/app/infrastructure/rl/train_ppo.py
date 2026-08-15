@@ -214,6 +214,8 @@ def _absolute_learn_timesteps(current: int, additional: int, *, reset: bool) -> 
         return additional
     return current + additional
 
+
+def _predict_action(
     model: MaskablePPO,
     obs: np.ndarray,
     mask: np.ndarray,
