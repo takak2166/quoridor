@@ -176,6 +176,7 @@ def _build_stages(
     weights_raw: str | None,
     max_wall_candidates: int,
     opponent_mix_overrides: dict[str, OpponentMix] | None = None,
+    no_opponent_mix: bool = False,
 ) -> list[CurriculumStage]:
     if curriculum:
         names = tuple(s.strip() for s in curriculum.split(",") if s.strip())
@@ -193,7 +194,7 @@ def _build_stages(
     stages: list[CurriculumStage] = []
     for name, steps in zip(names, stage_steps, strict=True):
         wall_k = None if name == "random" else max_wall_candidates
-        mix = mix_overrides.get(name, _default_opponent_mix(name))
+        mix = None if no_opponent_mix else mix_overrides.get(name, _default_opponent_mix(name))
         stages.append(
             CurriculumStage(
                 opponent=name,
@@ -531,6 +532,11 @@ def main() -> None:
         default=None,
         help="Load MaskablePPO zip and continue curriculum from this checkpoint",
     )
+    parser.add_argument(
+        "--no-opponent-mix",
+        action="store_true",
+        help="Train against the stage opponent only (no weaker-opponent mix)",
+    )
     parser.add_argument("--tb-log", type=str, default="runs/quoridor")
     parser.add_argument(
         "--webhook-url",
@@ -551,6 +557,7 @@ def main() -> None:
         opponent=args.opponent,
         weights_raw=args.curriculum_weights,
         max_wall_candidates=args.max_wall_candidates,
+        no_opponent_mix=args.no_opponent_mix,
     )
 
     if not stages:
