@@ -21,3 +21,10 @@ def test_no_opponent_mix_builds_pure_normal_stage() -> None:
     assert stages[0].opponent == "normal"
     assert stages[0].opponent_mix is None
     assert stages[0].timesteps == 100_000
+
+
+def test_resume_learn_target_is_current_plus_additional() -> None:
+    from app.infrastructure.rl.train_ppo import _absolute_learn_timesteps
+
+    assert _absolute_learn_timesteps(1_212_416, 400_000, reset=False) == 1_612_416
+    assert _absolute_learn_timesteps(0, 400_000, reset=True) == 400_000

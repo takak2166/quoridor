@@ -206,7 +206,14 @@ def _build_stages(
     return stages
 
 
-def _predict_action(
+def _absolute_learn_timesteps(current: int, additional: int, *, reset: bool) -> int:
+    """SB3 ``learn(total_timesteps=)`` is an absolute counter unless reset."""
+    if additional <= 0:
+        raise ValueError("additional timesteps must be positive")
+    if reset:
+        return additional
+    return current + additional
+
     model: MaskablePPO,
     obs: np.ndarray,
     mask: np.ndarray,
@@ -616,13 +623,19 @@ def main() -> None:
                     old_env.close()
 
             extend_count = 0
-            learn_steps = stage.timesteps
+            additional_steps = stage.timesteps
             while True:
+                reset_num_timesteps = stage_i == 1 and extend_count == 0 and not args.resume
+                learn_steps = _absolute_learn_timesteps(
+                    int(model.num_timesteps),
+                    additional_steps,
+                    reset=reset_num_timesteps,
+                )
                 _log_stage(
                     stage_i=stage_i,
                     stage_count=len(stages),
                     stage=stage,
-                    timesteps=learn_steps,
+                    timesteps=additional_steps,
                     opening_wall_free_plies=args.opening_wall_free_plies,
                     potential_scale=args.potential_scale,
                     vec_env=args.vec_env,
@@ -630,7 +643,13 @@ def main() -> None:
                     revisit_decay=args.revisit_decay,
                     revisit_max_age=args.revisit_max_age,
                 )
-                reset_num_timesteps = stage_i == 1 and extend_count == 0 and not args.resume
+                if not reset_num_timesteps:
+                    logger.info(
+                        "Resume learn target: current=%d additional=%d absolute=%d",
+                        int(model.num_timesteps),
+                        additional_steps,
+                        learn_steps,
+                    )
                 callbacks = _checkpoint_callback(
                     checkpoint_dir=checkpoint_dir,
                     checkpoint_freq=args.checkpoint_freq,
@@ -691,7 +710,7 @@ def main() -> None:
                     args.smoke_hard_gate_extend_steps,
                 )
                 extend_count += 1
-                learn_steps = args.smoke_hard_gate_extend_steps
+                additional_steps = args.smoke_hard_gate_extend_steps
 
         assert model is not None
         final_stage = stages[-1]
