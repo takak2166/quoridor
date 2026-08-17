@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import argparse
 import logging
+import random
 import threading
 import time
 from collections.abc import Callable
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeoutError
+from concurrent.futures import Future, ThreadPoolExecutor
+from concurrent.futures import TimeoutError as FuturesTimeoutError
 from dataclasses import dataclass
 from functools import partial
 from pathlib import Path
@@ -206,13 +208,22 @@ def _build_stages(
     return stages
 
 
-def _absolute_learn_timesteps(current: int, additional: int, *, reset: bool) -> int:
-    """SB3 ``learn(total_timesteps=)`` is an absolute counter unless reset."""
+def _sb3_learn_timesteps(additional: int) -> int:
+    """Value for ``MaskablePPO.learn(total_timesteps=)``.
+
+    Stable-Baselines3 ``_setup_learn`` adds ``self.num_timesteps`` when
+    ``reset_num_timesteps=False``. Pass the *additional* budget only; never
+    ``current + additional``.
+    """
     if additional <= 0:
         raise ValueError("additional timesteps must be positive")
-    if reset:
-        return additional
-    return current + additional
+    return additional
+
+
+def _seed_smoke_rng(seed: int) -> None:
+    random.seed(seed)
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
 
 def _predict_action(
@@ -260,6 +271,7 @@ def _play_smoke_game(
         revisit_max_age=0,
     )
     try:
+        _seed_smoke_rng(seed)
         obs, info = env.reset(seed=seed)
         terminated = False
         while not terminated:
@@ -273,6 +285,27 @@ def _play_smoke_game(
         return reward > 0
     finally:
         env.close()
+
+
+def _smoke_game_won(
+    future: Future[bool],
+    *,
+    timeout_sec: float,
+    opponent: str,
+) -> bool:
+    """True on a finished win; timeout and errors count as losses."""
+    try:
+        return bool(future.result(timeout=timeout_sec))
+    except FuturesTimeoutError:
+        logger.warning(
+            "Smoke game vs %s timed out after %.0fs (counted as loss)",
+            opponent,
+            timeout_sec,
+        )
+        return False
+    except Exception:
+        logger.exception("Smoke game vs %s failed (counted as loss)", opponent)
+        return False
 
 
 def smoke_win_rate(
@@ -290,43 +323,35 @@ def smoke_win_rate(
     if games <= 0:
         return 0.0
 
-    wins = 0
-    completed = 0
-    max_workers = min(workers, games)
-    # MaskablePPO.predict is not thread-safe; serialize shared-model calls.
-    predict_lock = threading.Lock()
-    with ThreadPoolExecutor(max_workers=max_workers) as executor:
-        futures = [
-            executor.submit(
-                _play_smoke_game,
-                model,
-                opponent,
-                gamma=gamma,
-                potential_scale=potential_scale,
-                max_wall_candidates=max_wall_candidates,
-                opening_wall_free_plies=opening_wall_free_plies,
-                seed=seed,
-                predict_lock=predict_lock,
-            )
-            for seed in range(games)
-        ]
-        for future in futures:
-            try:
-                if future.result(timeout=timeout_sec):
-                    wins += 1
-                completed += 1
-            except FuturesTimeoutError:
-                logger.warning(
-                    "Smoke game vs %s timed out after %.0fs (skipped)",
+    was_training = bool(model.policy.training)
+    model.policy.set_training_mode(False)
+    try:
+        max_workers = min(workers, games)
+        # MaskablePPO.predict is not thread-safe; serialize shared-model calls.
+        predict_lock = threading.Lock()
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            futures = [
+                executor.submit(
+                    _play_smoke_game,
+                    model,
                     opponent,
-                    timeout_sec,
+                    gamma=gamma,
+                    potential_scale=potential_scale,
+                    max_wall_candidates=max_wall_candidates,
+                    opening_wall_free_plies=opening_wall_free_plies,
+                    seed=seed,
+                    predict_lock=predict_lock,
                 )
-            except Exception:
-                logger.exception("Smoke game vs %s failed", opponent)
+                for seed in range(games)
+            ]
+            wins = sum(
+                _smoke_game_won(future, timeout_sec=timeout_sec, opponent=opponent)
+                for future in futures
+            )
+    finally:
+        model.policy.set_training_mode(was_training)
 
-    if completed == 0:
-        return 0.0
-    return wins / completed
+    return wins / games
 
 
 def initial_move_probability_mass(
@@ -502,7 +527,7 @@ def main() -> None:
         default=DEFAULT_MIN_MOVE_PROB_MASS,
         help="Must gate: minimum initial move probability mass before saving release zip",
     )
-    parser.add_argument("--smoke-games", type=int, default=2)
+    parser.add_argument("--smoke-games", type=int, default=8)
     parser.add_argument(
         "--smoke-timeout-sec",
         type=float,
@@ -628,11 +653,7 @@ def main() -> None:
             additional_steps = stage.timesteps
             while True:
                 reset_num_timesteps = stage_i == 1 and extend_count == 0 and not args.resume
-                learn_steps = _absolute_learn_timesteps(
-                    int(model.num_timesteps),
-                    additional_steps,
-                    reset=reset_num_timesteps,
-                )
+                learn_steps = _sb3_learn_timesteps(additional_steps)
                 _log_stage(
                     stage_i=stage_i,
                     stage_count=len(stages),
@@ -646,11 +667,12 @@ def main() -> None:
                     revisit_max_age=args.revisit_max_age,
                 )
                 if not reset_num_timesteps:
+                    current = int(model.num_timesteps)
                     logger.info(
-                        "Resume learn target: current=%d additional=%d absolute=%d",
-                        int(model.num_timesteps),
+                        "Continue learn: current=%d additional=%d sb3_target=%d",
+                        current,
                         additional_steps,
-                        learn_steps,
+                        current + additional_steps,
                     )
                 callbacks = _checkpoint_callback(
                     checkpoint_dir=checkpoint_dir,

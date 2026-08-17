@@ -18,7 +18,7 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --revisit-decay 0.5 \
   --revisit-max-age 4 \
   --max-wall-candidates 10 \
-  --smoke-games 4 \
+  --smoke-games 8 \
   --smoke-timeout-sec 300 \
   --smoke-workers 4 \
   --smoke-hard-gate-min-win-rate 0.25 \
