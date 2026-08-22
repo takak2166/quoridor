@@ -185,8 +185,12 @@ def behavior_clone(
                 obs_t = torch.as_tensor(obs[idx], device=device)
                 mask_t = torch.as_tensor(masks[idx], device=device)
                 act_t = torch.as_tensor(actions[idx], device=device)
-                dist = policy.get_distribution(obs_t, action_masks=mask_t)
-                loss = -dist.log_prob(act_t).mean()
+                _values, log_prob, _entropy = policy.evaluate_actions(
+                    obs_t,
+                    act_t,
+                    action_masks=mask_t,
+                )
+                loss = -log_prob.mean()
                 optimizer.zero_grad()
                 loss.backward()
                 optimizer.step()

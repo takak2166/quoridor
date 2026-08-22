@@ -542,6 +542,16 @@ def _log_stage(
     )
 
 
+def _clone_white_win_demos(model: MaskablePPO, *, demo_wins: int, epochs: int) -> None:
+    if demo_wins <= 0:
+        return
+    demos = collect_white_win_transitions(n_wins=demo_wins)
+    if not demos:
+        logger.warning("White-win BC skipped: no winning demonstrations")
+        return
+    behavior_clone(model, demos, epochs=epochs)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
@@ -717,8 +727,7 @@ def main() -> None:
 
     try:
         for stage_i, stage in enumerate(stages, start=1):
-            env = build_vec_env(
-                stage.opponent,
+            env_kwargs = dict(
                 reward_shaping=True,
                 gamma=args.gamma,
                 potential_scale=args.potential_scale,
@@ -728,37 +737,61 @@ def main() -> None:
                 revisit_alpha=args.revisit_alpha,
                 revisit_decay=args.revisit_decay,
                 revisit_max_age=args.revisit_max_age,
-                n_envs=args.n_envs,
-                vec_env=args.vec_env,
                 agent_white_prob=stage.agent_white_prob,
                 imitation_bonus=imitation_bonus,
             )
 
             if model is None:
-                if args.resume:
-                    resume_path = Path(args.resume)
-                    if not resume_path.is_file():
-                        raise FileNotFoundError(f"Resume checkpoint not found: {resume_path}")
-                    logger.info("Resuming from %s", resume_path)
-                    model = MaskablePPO.load(str(resume_path), env=env, tensorboard_log=args.tb_log)
-                else:
-                    model = MaskablePPO(
-                        "MlpPolicy",
-                        env,
-                        verbose=1,
-                        n_steps=512,
-                        batch_size=128,
-                        ent_coef=args.ent_coef,
-                        gamma=args.gamma,
-                        tensorboard_log=args.tb_log,
-                    )
-                current_env = env
-                if demo_wins > 0:
-                    demos = collect_white_win_transitions(n_wins=demo_wins)
-                    if demos:
-                        behavior_clone(model, demos, epochs=args.white_demo_epochs)
+                # Clone against a dummy env first. Torch backward + SubprocVecEnv
+                # forkserver workers SIGILL'd on this host.
+                dummy = build_vec_env(
+                    stage.opponent,
+                    n_envs=1,
+                    vec_env="dummy",
+                    **env_kwargs,
+                )
+                try:
+                    if args.resume:
+                        resume_path = Path(args.resume)
+                        if not resume_path.is_file():
+                            raise FileNotFoundError(
+                                f"Resume checkpoint not found: {resume_path}"
+                            )
+                        logger.info("Resuming from %s", resume_path)
+                        model = MaskablePPO.load(
+                            str(resume_path),
+                            env=dummy,
+                            tensorboard_log=args.tb_log,
+                        )
                     else:
-                        logger.warning("White-win BC skipped: no winning demonstrations")
+                        model = MaskablePPO(
+                            "MlpPolicy",
+                            dummy,
+                            verbose=1,
+                            n_steps=512,
+                            batch_size=128,
+                            ent_coef=args.ent_coef,
+                            gamma=args.gamma,
+                            tensorboard_log=args.tb_log,
+                        )
+                    _clone_white_win_demos(
+                        model,
+                        demo_wins=demo_wins,
+                        epochs=args.white_demo_epochs,
+                    )
+                finally:
+                    dummy.close()
+
+            env = build_vec_env(
+                stage.opponent,
+                n_envs=args.n_envs,
+                vec_env=args.vec_env,
+                **env_kwargs,
+            )
+            if current_env is None:
+                assert model is not None
+                model.set_env(env)
+                current_env = env
             else:
                 old_env = current_env
                 model.set_env(env)
