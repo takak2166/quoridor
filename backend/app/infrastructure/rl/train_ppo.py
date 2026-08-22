@@ -741,9 +741,7 @@ def main() -> None:
                 imitation_bonus=imitation_bonus,
             )
 
-            if model is None:
-                # Clone against a dummy env first. Torch backward + SubprocVecEnv
-                # forkserver workers SIGILL'd on this host.
+            if model is None and demo_wins > 0:
                 dummy = build_vec_env(
                     stage.opponent,
                     n_envs=1,
@@ -758,13 +756,13 @@ def main() -> None:
                                 f"Resume checkpoint not found: {resume_path}"
                             )
                         logger.info("Resuming from %s", resume_path)
-                        model = MaskablePPO.load(
+                        cloned = MaskablePPO.load(
                             str(resume_path),
                             env=dummy,
                             tensorboard_log=args.tb_log,
                         )
                     else:
-                        model = MaskablePPO(
+                        cloned = MaskablePPO(
                             "MlpPolicy",
                             dummy,
                             verbose=1,
@@ -775,10 +773,13 @@ def main() -> None:
                             tensorboard_log=args.tb_log,
                         )
                     _clone_white_win_demos(
-                        model,
+                        cloned,
                         demo_wins=demo_wins,
                         epochs=args.white_demo_epochs,
                     )
+                    bc_path = checkpoint_dir / "ppo_white_bc.zip"
+                    cloned.save(str(bc_path))
+                    logger.info("Saved white-win BC checkpoint to %s", bc_path)
                 finally:
                     dummy.close()
 
@@ -788,9 +789,37 @@ def main() -> None:
                 vec_env=args.vec_env,
                 **env_kwargs,
             )
-            if current_env is None:
-                assert model is not None
-                model.set_env(env)
+
+            if model is None:
+                if demo_wins > 0:
+                    bc_path = checkpoint_dir / "ppo_white_bc.zip"
+                    logger.info("Loading white-win BC checkpoint into %d envs", args.n_envs)
+                    model = MaskablePPO.load(
+                        str(bc_path),
+                        env=env,
+                        tensorboard_log=args.tb_log,
+                    )
+                elif args.resume:
+                    resume_path = Path(args.resume)
+                    if not resume_path.is_file():
+                        raise FileNotFoundError(f"Resume checkpoint not found: {resume_path}")
+                    logger.info("Resuming from %s", resume_path)
+                    model = MaskablePPO.load(
+                        str(resume_path),
+                        env=env,
+                        tensorboard_log=args.tb_log,
+                    )
+                else:
+                    model = MaskablePPO(
+                        "MlpPolicy",
+                        env,
+                        verbose=1,
+                        n_steps=512,
+                        batch_size=128,
+                        ent_coef=args.ent_coef,
+                        gamma=args.gamma,
+                        tensorboard_log=args.tb_log,
+                    )
                 current_env = env
             else:
                 old_env = current_env
