@@ -24,12 +24,22 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from app.infrastructure.rl.env import QuoridorEnv
 from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
 from app.infrastructure.rl.train_notify import notify_training_finished
+from app.infrastructure.rl.white_demonstrations import (
+    DEFAULT_WHITE_DEMO_EPOCHS,
+    DEFAULT_WHITE_DEMO_WINS,
+    behavior_clone,
+    collect_white_win_transitions,
+)
 from quoridor.domain.actions import is_move_index
 
 logger = logging.getLogger(__name__)
 
 DEFAULT_CURRICULUM = ("very_easy", "easy", "normal")
 DEFAULT_CURRICULUM_WEIGHTS = (0.25, 0.30, 0.45)
+WHITE_WIN_CURRICULUM = ("random", "very_easy", "easy", "normal")
+WHITE_WIN_CURRICULUM_WEIGHTS = (0.30, 0.25, 0.22, 0.23)
+WHITE_WIN_WHITE_PROBS = (0.80, 0.70, 0.60, 0.50)
+DEFAULT_WHITE_WIN_IMITATION_BONUS = 0.20
 DEFAULT_MIN_MOVE_PROB_MASS = 0.20
 DEFAULT_POTENTIAL_SCALE = 8.0
 
@@ -42,6 +52,7 @@ class CurriculumStage:
     timesteps: int
     max_wall_candidates: int | None
     opponent_mix: OpponentMix = None
+    agent_white_prob: float = 0.5
 
 
 def mask_fn(env: QuoridorEnv) -> list[bool]:
@@ -60,6 +71,8 @@ def _init_env(
     revisit_alpha: float,
     revisit_decay: float,
     revisit_max_age: int,
+    agent_white_prob: float,
+    imitation_bonus: float,
 ) -> ActionMasker:
     return ActionMasker(
         QuoridorEnv(
@@ -73,6 +86,8 @@ def _init_env(
             revisit_alpha=revisit_alpha,
             revisit_decay=revisit_decay,
             revisit_max_age=revisit_max_age,
+            agent_white_prob=agent_white_prob,
+            imitation_bonus=imitation_bonus,
         ),
         mask_fn,
     )
@@ -90,6 +105,8 @@ def _env_factories(
     revisit_alpha: float,
     revisit_decay: float,
     revisit_max_age: int,
+    agent_white_prob: float,
+    imitation_bonus: float,
     n_envs: int,
 ) -> list[Callable[[], ActionMasker]]:
     factory = partial(
@@ -104,6 +121,8 @@ def _env_factories(
         revisit_alpha=revisit_alpha,
         revisit_decay=revisit_decay,
         revisit_max_age=revisit_max_age,
+        agent_white_prob=agent_white_prob,
+        imitation_bonus=imitation_bonus,
     )
     return [factory for _ in range(n_envs)]
 
@@ -122,6 +141,8 @@ def build_vec_env(
     revisit_max_age: int,
     n_envs: int,
     vec_env: str,
+    agent_white_prob: float = 0.5,
+    imitation_bonus: float = 0.0,
 ) -> MaskDiagnosticVecEnv:
     factories = _env_factories(
         opponent,
@@ -134,6 +155,8 @@ def build_vec_env(
         revisit_alpha=revisit_alpha,
         revisit_decay=revisit_decay,
         revisit_max_age=revisit_max_age,
+        agent_white_prob=agent_white_prob,
+        imitation_bonus=imitation_bonus,
         n_envs=n_envs,
     )
     if vec_env == "subproc":
@@ -170,6 +193,17 @@ def _default_opponent_mix(opponent: str) -> OpponentMix:
     return None
 
 
+def _white_win_opponent_mix(opponent: str) -> OpponentMix:
+    """Keep wanderers in the mix so second-player racing can still win."""
+    if opponent == "very_easy":
+        return (("very_easy", 0.5), ("random", 0.5))
+    if opponent == "easy":
+        return (("easy", 0.4), ("very_easy", 0.3), ("random", 0.3))
+    if opponent == "normal":
+        return (("normal", 0.35), ("easy", 0.30), ("very_easy", 0.20), ("random", 0.15))
+    return None
+
+
 def _build_stages(
     *,
     timesteps: int,
@@ -179,8 +213,17 @@ def _build_stages(
     max_wall_candidates: int,
     opponent_mix_overrides: dict[str, OpponentMix] | None = None,
     no_opponent_mix: bool = False,
+    white_win_ramp: bool = False,
+    agent_white_prob: float | None = None,
 ) -> list[CurriculumStage]:
-    if curriculum:
+    if white_win_ramp:
+        names = WHITE_WIN_CURRICULUM
+        default_raw = ",".join(str(weight) for weight in WHITE_WIN_CURRICULUM_WEIGHTS)
+        weight_values = _parse_weights(weights_raw or default_raw, len(names))
+        stage_steps = [max(1, int(round(timesteps * w))) for w in weight_values]
+        delta = timesteps - sum(stage_steps)
+        stage_steps[-1] = max(1, stage_steps[-1] + delta)
+    elif curriculum:
         names = tuple(s.strip() for s in curriculum.split(",") if s.strip())
         if not names:
             raise ValueError("Curriculum must list at least one stage")
@@ -192,17 +235,32 @@ def _build_stages(
         names = (opponent,)
         stage_steps = [timesteps]
 
+    if agent_white_prob is not None:
+        white_probs = (agent_white_prob,) * len(names)
+    elif white_win_ramp:
+        white_probs = WHITE_WIN_WHITE_PROBS
+    else:
+        white_probs = (0.5,) * len(names)
+
     mix_overrides = opponent_mix_overrides or {}
     stages: list[CurriculumStage] = []
-    for name, steps in zip(names, stage_steps, strict=True):
+    for name, steps, white_prob in zip(names, stage_steps, white_probs, strict=True):
         wall_k = None if name == "random" else max_wall_candidates
-        mix = None if no_opponent_mix else mix_overrides.get(name, _default_opponent_mix(name))
+        if no_opponent_mix:
+            mix = None
+        elif name in mix_overrides:
+            mix = mix_overrides[name]
+        elif white_win_ramp:
+            mix = _white_win_opponent_mix(name)
+        else:
+            mix = _default_opponent_mix(name)
         stages.append(
             CurriculumStage(
                 opponent=name,
                 timesteps=steps,
                 max_wall_candidates=wall_k,
                 opponent_mix=mix,
+                agent_white_prob=white_prob,
             )
         )
     return stages
@@ -467,7 +525,7 @@ def _log_stage(
     logger.info(
         "Stage %d/%d: opponent=%s mix=%s timesteps=%d "
         "max_wall_candidates=%s opening_wall_free_plies=%s potential_scale=%s "
-        "vec_env=%s revisit=(alpha=%.3f,decay=%.3f,max_age=%s)",
+        "vec_env=%s white_prob=%.2f revisit=(alpha=%.3f,decay=%.3f,max_age=%s)",
         stage_i,
         stage_count,
         stage.opponent,
@@ -477,6 +535,7 @@ def _log_stage(
         opening_wall_free_plies,
         potential_scale,
         vec_env,
+        stage.agent_white_prob,
         revisit_alpha,
         revisit_decay,
         revisit_max_age,
@@ -571,6 +630,38 @@ def main() -> None:
         action="store_true",
         help="Train against the stage opponent only (no weaker-opponent mix)",
     )
+    parser.add_argument(
+        "--white-win-ramp",
+        action="store_true",
+        help=(
+            "Second-player curriculum: random→very_easy→easy→normal with wanderer "
+            "mix, white-biased resets, racing demos, and white imitation bonus"
+        ),
+    )
+    parser.add_argument(
+        "--white-demo-wins",
+        type=int,
+        default=None,
+        help="Winning White racing games to clone before PPO (default: 48 with --white-win-ramp)",
+    )
+    parser.add_argument(
+        "--white-demo-epochs",
+        type=int,
+        default=DEFAULT_WHITE_DEMO_EPOCHS,
+        help="Behavior-cloning epochs over White-win demonstrations",
+    )
+    parser.add_argument(
+        "--agent-white-prob",
+        type=float,
+        default=None,
+        help="P(agent is White) on reset; overrides per-stage ramp defaults",
+    )
+    parser.add_argument(
+        "--imitation-bonus",
+        type=float,
+        default=None,
+        help="Extra reward when White matches the greedy racing move (default: 0.2 with --white-win-ramp)",
+    )
     parser.add_argument("--tb-log", type=str, default="runs/quoridor")
     parser.add_argument(
         "--webhook-url",
@@ -582,8 +673,24 @@ def main() -> None:
 
     curriculum = args.curriculum.strip() if args.curriculum is not None else None
     curriculum = curriculum or None
-    if curriculum and args.opponent != "normal":
+    if args.white_win_ramp:
+        if curriculum and curriculum != ",".join(DEFAULT_CURRICULUM):
+            logger.warning("--curriculum=%r ignored because --white-win-ramp is set", curriculum)
+        curriculum = ",".join(WHITE_WIN_CURRICULUM)
+        logger.info(
+            "White-win ramp: curriculum=%s weights=%s",
+            curriculum,
+            args.curriculum_weights or ",".join(str(w) for w in WHITE_WIN_CURRICULUM_WEIGHTS),
+        )
+    elif curriculum and args.opponent != "normal":
         logger.warning("--opponent=%r ignored because --curriculum is set", args.opponent)
+
+    demo_wins = args.white_demo_wins
+    if demo_wins is None:
+        demo_wins = DEFAULT_WHITE_DEMO_WINS if args.white_win_ramp else 0
+    imitation_bonus = args.imitation_bonus
+    if imitation_bonus is None:
+        imitation_bonus = DEFAULT_WHITE_WIN_IMITATION_BONUS if args.white_win_ramp else 0.0
 
     stages = _build_stages(
         timesteps=args.timesteps,
@@ -592,6 +699,8 @@ def main() -> None:
         weights_raw=args.curriculum_weights,
         max_wall_candidates=args.max_wall_candidates,
         no_opponent_mix=args.no_opponent_mix,
+        white_win_ramp=args.white_win_ramp,
+        agent_white_prob=args.agent_white_prob,
     )
 
     if not stages:
@@ -621,6 +730,8 @@ def main() -> None:
                 revisit_max_age=args.revisit_max_age,
                 n_envs=args.n_envs,
                 vec_env=args.vec_env,
+                agent_white_prob=stage.agent_white_prob,
+                imitation_bonus=imitation_bonus,
             )
 
             if model is None:
@@ -642,6 +753,12 @@ def main() -> None:
                         tensorboard_log=args.tb_log,
                     )
                 current_env = env
+                if demo_wins > 0:
+                    demos = collect_white_win_transitions(n_wins=demo_wins)
+                    if demos:
+                        behavior_clone(model, demos, epochs=args.white_demo_epochs)
+                    else:
+                        logger.warning("White-win BC skipped: no winning demonstrations")
             else:
                 old_env = current_env
                 model.set_env(env)

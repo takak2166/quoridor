@@ -22,19 +22,43 @@ def test_default_normal_mix_includes_weaker_opponents() -> None:
     assert names == {"normal", "easy", "very_easy"}
 
 
-def test_no_opponent_mix_builds_pure_normal_stage() -> None:
+def test_white_win_ramp_starts_at_random_and_keeps_wanderers() -> None:
+    from app.infrastructure.rl.train_ppo import WHITE_WIN_CURRICULUM, _white_win_opponent_mix
+
     stages = _build_stages(
         timesteps=100_000,
+        curriculum="very_easy,easy,normal",
+        opponent="normal",
+        weights_raw=None,
+        max_wall_candidates=10,
+        white_win_ramp=True,
+    )
+    assert tuple(stage.opponent for stage in stages) == WHITE_WIN_CURRICULUM
+    assert stages[0].opponent_mix is None
+    assert stages[0].max_wall_candidates is None
+    assert stages[0].agent_white_prob == 0.80
+    assert stages[-1].agent_white_prob == 0.50
+    assert sum(stage.timesteps for stage in stages) == 100_000
+    easy_mix = _white_win_opponent_mix("easy")
+    assert easy_mix is not None
+    assert {name for name, _ in easy_mix} == {"easy", "very_easy", "random"}
+    normal_mix = stages[-1].opponent_mix
+    assert normal_mix is not None
+    assert "random" in {name for name, _ in normal_mix}
+
+
+def test_agent_white_prob_overrides_ramp_defaults() -> None:
+    stages = _build_stages(
+        timesteps=10_000,
         curriculum=None,
         opponent="normal",
         weights_raw=None,
         max_wall_candidates=10,
-        no_opponent_mix=True,
+        white_win_ramp=True,
+        agent_white_prob=0.9,
     )
-    assert len(stages) == 1
-    assert stages[0].opponent == "normal"
-    assert stages[0].opponent_mix is None
-    assert stages[0].timesteps == 100_000
+    assert all(stage.agent_white_prob == 0.9 for stage in stages)
+
 
 
 def test_sb3_learn_timesteps_is_additional_only() -> None:

@@ -9,9 +9,7 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --timesteps 400000 \
   --n-envs 8 \
   --vec-env subproc \
-  --curriculum="" \
-  --opponent normal \
-  --no-opponent-mix \
+  --white-win-ramp \
   --potential-scale 8 \
   --opening-wall-free-plies 2 \
   --revisit-alpha 0.15 \

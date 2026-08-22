@@ -92,6 +92,28 @@ def test_reset_randomizes_agent_color() -> None:
     assert seen == {"black", "white"}
 
 
+def test_agent_white_prob_one_always_white() -> None:
+    env = QuoridorEnv(agent_white_prob=1.0, opponent="random", reward_shaping=False)
+    env.reset(seed=0)
+    for _ in range(12):
+        env.reset()
+        assert env.agent_color == "white"
+
+
+def test_white_imitation_bonus_for_greedy_forward() -> None:
+    env = QuoridorEnv(
+        agent_color="white",
+        opponent="random",
+        reward_shaping=False,
+        imitation_bonus=0.2,
+        randomize_agent_color=False,
+    )
+    env.reset(options={"agent_color": "white"})
+    _, reward, terminated, _, _ = env.step(FORWARD_STEP_INDEX)
+    assert not terminated
+    assert reward == 0.2
+
+
 def test_step_ends_episode_on_opponent_turn() -> None:
     env = QuoridorEnv(agent_color="white", opponent="random", reward_shaping=False)
     env.reset(options={"agent_color": "white"})

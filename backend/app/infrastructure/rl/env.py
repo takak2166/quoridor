@@ -18,6 +18,7 @@ from app.infrastructure.rl.reward_shaping import (
     shaped_step_reward,
 )
 from app.infrastructure.rl.stuck_diagnostic import log_and_dump_stuck
+from app.infrastructure.rl.white_demonstrations import is_greedy_race_action
 from app.mappers.observation_mapper import to_observation
 from quoridor.domain.actions import NUM_ACTIONS, Move, WallSlot, decode, is_move_index
 from quoridor.domain.state import Color, initial_state
@@ -80,6 +81,8 @@ class QuoridorEnv(gym.Env):
         revisit_alpha: float = DEFAULT_REVISIT_ALPHA,
         revisit_decay: float = DEFAULT_REVISIT_DECAY,
         revisit_max_age: int = DEFAULT_REVISIT_MAX_AGE,
+        agent_white_prob: float = 0.5,
+        imitation_bonus: float = 0.0,
     ) -> None:
         super().__init__()
         self._default_agent_color: Color = _as_color(agent_color)
@@ -98,6 +101,10 @@ class QuoridorEnv(gym.Env):
         self.revisit_alpha = revisit_alpha
         self.revisit_decay = revisit_decay
         self.revisit_max_age = max(0, revisit_max_age)
+        if not 0.0 <= agent_white_prob <= 1.0:
+            raise ValueError(f"agent_white_prob must be in [0, 1], got {agent_white_prob}")
+        self.agent_white_prob = float(agent_white_prob)
+        self.imitation_bonus = max(0.0, float(imitation_bonus))
         self._agent_plies_played = 0
         self._agent_path: list[tuple[int, int]] = []
         self._last_agent_action: Move | WallSlot | None = None
@@ -120,7 +127,8 @@ class QuoridorEnv(gym.Env):
         if "agent_color" in options:
             self.agent_color = _as_color(options["agent_color"])
         elif self.randomize_agent_color:
-            self.agent_color = _as_color(self.np_random.choice(["black", "white"]))
+            pick_white = float(self.np_random.random()) < self.agent_white_prob
+            self.agent_color = _as_color("white" if pick_white else "black")
         else:
             self.agent_color = self._default_agent_color
 
@@ -249,6 +257,12 @@ class QuoridorEnv(gym.Env):
         else:
             reward = terminal_reward
         reward += revisit
+        if (
+            self.imitation_bonus > 0.0
+            and self.agent_color == "white"
+            and is_greedy_race_action(state_before, "white", move, self._cache)
+        ):
+            reward += self.imitation_bonus
 
         if not terminated and not self._is_agent_to_play():
             logger.error(
