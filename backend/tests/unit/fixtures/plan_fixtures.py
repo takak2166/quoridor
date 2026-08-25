@@ -214,6 +214,50 @@ PF_CASES = [
     },
 ]
 
+
+def seed3_wall_separated_choke() -> QuoridorState:
+    """Training smoke seed=3 after easy sits on the eastern gate.
+
+    White (3, 4) and black (3, 5) are Manhattan-adjacent, but vertical wall
+    (2, 4) sits between them, so a jump is illegal. Black occupies the only
+    open corridor to the east. Evaluation must still find a path: a pawn is
+    not a wall.
+    """
+    return build_state(
+        white=(3, 4),
+        black=(3, 5),
+        current="white",
+        h=frozenset(
+            {
+                (0, 2),
+                (0, 4),
+                (1, 0),
+                (2, 1),
+                (2, 3),
+                (2, 6),
+                (4, 0),
+                (4, 2),
+                (4, 6),
+                (5, 4),
+                (5, 6),
+                (6, 6),
+            }
+        ),
+        v=frozenset(
+            {
+                (0, 1),
+                (1, 5),
+                (2, 2),
+                (2, 4),
+                (4, 3),
+                (4, 4),
+                (4, 5),
+                (6, 7),
+            }
+        ),
+    )
+
+
 WALL_STEP_CASES = [
     {
         "id": "W.1-HORIZONTAL-RIGHT-DOWN",

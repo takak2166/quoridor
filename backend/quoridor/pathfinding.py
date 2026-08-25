@@ -33,6 +33,20 @@ def _pawn_adjacent(a: tuple[int, int], b: tuple[int, int]) -> bool:
     return abs(a[0] - b[0]) + abs(a[1] - b[1]) == 1
 
 
+def _pawns_face_across_open_edge(
+    state: QuoridorState,
+    a: tuple[int, int],
+    b: tuple[int, int],
+) -> bool:
+    """True when pawns share an edge that is not blocked by a wall.
+
+    Manhattan adjacency alone is not enough: a vertical/horizontal wall can sit
+    between the two cells, in which case a jump is illegal and the opponent
+    must not be treated as a facing blocker.
+    """
+    return _pawn_adjacent(a, b) and can_step(state, a, b)
+
+
 def _expand_bfs_neighbors(
     state: QuoridorState,
     color: Color,
@@ -43,8 +57,9 @@ def _expand_bfs_neighbors(
 ) -> list[tuple[int, int]]:
     """Neighbors for BFS expansion.
 
-    When ``ghost_opponent`` is True (pawns not adjacent), the opponent cell is traversable.
-    Otherwise, jumps are considered from cells adjacent to the opponent pawn.
+    When ``ghost_opponent`` is True (pawns do not face across an open edge),
+    the opponent cell is traversable. Otherwise, jumps are considered from
+    cells that face the opponent pawn through an open edge.
     """
     if ghost_opponent:
         neighbors: list[tuple[int, int]] = []
@@ -58,7 +73,7 @@ def _expand_bfs_neighbors(
             neighbors.append(nxt)
         return neighbors
 
-    if _pawn_adjacent(pos, opponent):
+    if _pawns_face_across_open_edge(state, pos, opponent):
         return list(step_destinations_from(state, color, pos))
 
     r, c = pos
@@ -79,7 +94,9 @@ def _bfs_distance(state: QuoridorState, color: Color, *, for_evaluation: bool = 
     start = state.pawn(color)
     goal_row = GOAL_ROW[color]
     opponent = state.pawn("black" if color == "white" else "white")
-    ghost_opponent = for_evaluation and not _pawn_adjacent(start, opponent)
+    ghost_opponent = for_evaluation and not _pawns_face_across_open_edge(
+        state, start, opponent
+    )
     visited: set[tuple[int, int]] = {start}
     queue: deque[tuple[tuple[int, int], int]] = deque([(start, 0)])
 
@@ -105,7 +122,9 @@ def _bfs_distance_map(
     start = state.pawn(color)
     goal_row = GOAL_ROW[color]
     opponent = state.pawn("black" if color == "white" else "white")
-    ghost_opponent = for_evaluation and not _pawn_adjacent(start, opponent)
+    ghost_opponent = for_evaluation and not _pawns_face_across_open_edge(
+        state, start, opponent
+    )
     dist: dict[tuple[int, int], int] = {start: 0}
     queue: deque[tuple[int, int]] = deque([start])
 
