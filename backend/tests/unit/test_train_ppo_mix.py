@@ -7,8 +7,10 @@ from unittest.mock import MagicMock
 import pytest
 
 from app.infrastructure.rl.train_ppo import (
+    SMOKE_MAX_AGENT_PLIES,
     _build_stages,
     _default_opponent_mix,
+    _play_smoke_game,
     _sb3_learn_timesteps,
     _smoke_game_won,
     smoke_win_rate,
@@ -132,3 +134,51 @@ def test_smoke_win_rate_keeps_timeouts_in_denominator(monkeypatch) -> None:
     assert rate == 0.25
     model.policy.set_training_mode.assert_any_call(False)
     model.policy.set_training_mode.assert_called_with(True)
+
+
+def test_smoke_ply_cap_counts_as_loss(monkeypatch) -> None:
+    from app.infrastructure.rl import train_ppo as mod
+
+    class LoopEnv:
+        def reset(self, seed: int | None = None):
+            return object(), {"action_masks": [True]}
+
+        def step(self, action: int):
+            return object(), 0.0, False, False, {"action_masks": [True]}
+
+        def close(self) -> None:
+            return None
+
+    monkeypatch.setattr(mod, "QuoridorEnv", lambda **kwargs: LoopEnv())
+    monkeypatch.setattr(mod, "SMOKE_MAX_AGENT_PLIES", 3)
+    monkeypatch.setattr(mod, "_predict_action", lambda *args, **kwargs: 0)
+    monkeypatch.setattr(mod, "_seed_smoke_rng", lambda seed: None)
+
+    assert (
+        _play_smoke_game(
+            MagicMock(),
+            "easy",
+            gamma=0.99,
+            potential_scale=8.0,
+            max_wall_candidates=10,
+            opening_wall_free_plies=2,
+            seed=0,
+        )
+        is False
+    )
+
+
+def test_start_stage_skips_completed_white_win_stages() -> None:
+    stages = _build_stages(
+        timesteps=400_000,
+        curriculum=None,
+        opponent="normal",
+        weights_raw=None,
+        max_wall_candidates=10,
+        white_win_ramp=True,
+    )
+    assert [s.opponent for s in stages] == ["random", "very_easy", "easy", "normal"]
+    remaining = stages[4 - 1 :]
+    assert [s.opponent for s in remaining] == ["normal"]
+    assert remaining[0].timesteps == 92_000
+    assert SMOKE_MAX_AGENT_PLIES == 200

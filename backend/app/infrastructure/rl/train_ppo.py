@@ -42,6 +42,9 @@ WHITE_WIN_WHITE_PROBS = (0.80, 0.70, 0.60, 0.50)
 DEFAULT_WHITE_WIN_IMITATION_BONUS = 0.20
 DEFAULT_MIN_MOVE_PROB_MASS = 0.20
 DEFAULT_POTENTIAL_SCALE = 8.0
+# Agent plies per smoke game. Without a cap, a 2-cycle never sets terminated and
+# ThreadPoolExecutor.__exit__ waits forever even after future.result times out.
+SMOKE_MAX_AGENT_PLIES = 200
 
 OpponentMix = tuple[tuple[str, float], ...] | None
 
@@ -331,8 +334,8 @@ def _play_smoke_game(
     try:
         _seed_smoke_rng(seed)
         obs, info = env.reset(seed=seed)
-        terminated = False
-        while not terminated:
+        reward = 0.0
+        for _ply in range(SMOKE_MAX_AGENT_PLIES):
             action = _predict_action(
                 model,
                 obs,
@@ -340,7 +343,14 @@ def _play_smoke_game(
                 lock=predict_lock,
             )
             obs, reward, terminated, _truncated, info = env.step(action)
-        return reward > 0
+            if terminated:
+                return reward > 0
+        logger.warning(
+            "Smoke game vs %s hit %d-ply cap (counted as loss)",
+            opponent,
+            SMOKE_MAX_AGENT_PLIES,
+        )
+        return False
     finally:
         env.close()
 
@@ -636,6 +646,12 @@ def main() -> None:
         help="Load MaskablePPO zip and continue curriculum from this checkpoint",
     )
     parser.add_argument(
+        "--start-stage",
+        type=int,
+        default=1,
+        help="1-based curriculum stage to start from (skip already-finished stages)",
+    )
+    parser.add_argument(
         "--no-opponent-mix",
         action="store_true",
         help="Train against the stage opponent only (no weaker-opponent mix)",
@@ -715,6 +731,19 @@ def main() -> None:
 
     if not stages:
         raise ValueError("At least one training stage is required")
+    if args.start_stage < 1 or args.start_stage > len(stages):
+        raise ValueError(
+            f"--start-stage must be in 1..{len(stages)}, got {args.start_stage}"
+        )
+    if args.start_stage > 1:
+        logger.info(
+            "Skipping stages 1-%d; starting at stage %d/%d (%s, %d steps)",
+            args.start_stage - 1,
+            args.start_stage,
+            len(stages),
+            stages[args.start_stage - 1].opponent,
+            stages[args.start_stage - 1].timesteps,
+        )
 
     checkpoint_dir = Path(args.checkpoint_dir)
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
@@ -727,6 +756,8 @@ def main() -> None:
 
     try:
         for stage_i, stage in enumerate(stages, start=1):
+            if stage_i < args.start_stage:
+                continue
             env_kwargs = dict(
                 reward_shaping=True,
                 gamma=args.gamma,
