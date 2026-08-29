@@ -13,7 +13,7 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --black-demo-max-games 800 \
   --black-demo-workers 16 \
   --bc-only \
-  --curriculum normal \
+  --curriculum "" \
   --opponent normal \
   --timesteps 1 \
   --n-envs 1 \
