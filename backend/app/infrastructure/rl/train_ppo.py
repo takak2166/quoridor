@@ -28,6 +28,7 @@ from app.infrastructure.rl.white_demonstrations import (
     DEFAULT_WHITE_DEMO_EPOCHS,
     DEFAULT_WHITE_DEMO_WINS,
     behavior_clone,
+    collect_black_wins_vs_normal,
     collect_white_win_transitions,
 )
 from quoridor.domain.actions import is_move_index
@@ -562,6 +563,19 @@ def _clone_white_win_demos(model: MaskablePPO, *, demo_wins: int, epochs: int) -
     behavior_clone(model, demos, epochs=epochs)
 
 
+def _clone_black_wins_vs_normal(
+    model: MaskablePPO, *, demo_wins: int, epochs: int
+) -> None:
+    if demo_wins <= 0:
+        return
+    demos = collect_black_wins_vs_normal(n_wins=demo_wins)
+    if not demos:
+        raise SystemExit(
+            "Black-win BC failed: Normal vs Normal produced no first-player wins"
+        )
+    behavior_clone(model, demos, epochs=epochs)
+
+
 def main() -> None:
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
     parser = argparse.ArgumentParser()
@@ -677,6 +691,18 @@ def main() -> None:
         help="Behavior-cloning epochs over White-win demonstrations",
     )
     parser.add_argument(
+        "--black-demo-wins",
+        type=int,
+        default=0,
+        help="Winning Normal vs Normal first-player games to clone before PPO",
+    )
+    parser.add_argument(
+        "--black-demo-epochs",
+        type=int,
+        default=DEFAULT_WHITE_DEMO_EPOCHS,
+        help="Behavior-cloning epochs over Black-win vs Normal demonstrations",
+    )
+    parser.add_argument(
         "--agent-white-prob",
         type=float,
         default=None,
@@ -714,6 +740,7 @@ def main() -> None:
     demo_wins = args.white_demo_wins
     if demo_wins is None:
         demo_wins = DEFAULT_WHITE_DEMO_WINS if args.white_win_ramp else 0
+    black_demo_wins = max(0, int(args.black_demo_wins))
     imitation_bonus = args.imitation_bonus
     if imitation_bonus is None:
         imitation_bonus = DEFAULT_WHITE_WIN_IMITATION_BONUS if args.white_win_ramp else 0.0
@@ -772,7 +799,8 @@ def main() -> None:
                 imitation_bonus=imitation_bonus,
             )
 
-            if model is None and demo_wins > 0:
+            need_preclone = demo_wins > 0 or black_demo_wins > 0
+            if model is None and need_preclone:
                 dummy = build_vec_env(
                     stage.opponent,
                     n_envs=1,
@@ -808,9 +836,14 @@ def main() -> None:
                         demo_wins=demo_wins,
                         epochs=args.white_demo_epochs,
                     )
-                    bc_path = checkpoint_dir / "ppo_white_bc.zip"
+                    _clone_black_wins_vs_normal(
+                        cloned,
+                        demo_wins=black_demo_wins,
+                        epochs=args.black_demo_epochs,
+                    )
+                    bc_path = checkpoint_dir / "ppo_bc.zip"
                     cloned.save(str(bc_path))
-                    logger.info("Saved white-win BC checkpoint to %s", bc_path)
+                    logger.info("Saved BC checkpoint to %s", bc_path)
                 finally:
                     dummy.close()
 
@@ -822,9 +855,9 @@ def main() -> None:
             )
 
             if model is None:
-                if demo_wins > 0:
-                    bc_path = checkpoint_dir / "ppo_white_bc.zip"
-                    logger.info("Loading white-win BC checkpoint into %d envs", args.n_envs)
+                if need_preclone:
+                    bc_path = checkpoint_dir / "ppo_bc.zip"
+                    logger.info("Loading BC checkpoint into %d envs", args.n_envs)
                     model = MaskablePPO.load(
                         str(bc_path),
                         env=env,

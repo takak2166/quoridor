@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import random
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 import numpy as np
@@ -27,6 +27,10 @@ DEFAULT_WHITE_DEMO_WINS = 48
 DEFAULT_WHITE_DEMO_EPOCHS = 4
 DEFAULT_WHITE_DEMO_MAX_GAMES = 240
 DEFAULT_WHITE_DEMO_MAX_MOVES = 200
+DEFAULT_BLACK_DEMO_WINS = 48
+DEFAULT_BLACK_VS_NORMAL_MAX_GAMES = 64
+
+Chooser = Callable[[QuoridorState, Color, random.Random], Action]
 
 
 @dataclass(frozen=True)
@@ -87,14 +91,89 @@ def _random_legal_action(state: QuoridorState, rng: random.Random) -> Action:
     return rng.choice(legal)
 
 
-def _record_white_transition(state: QuoridorState, action: Action) -> DemoTransition:
-    from_pos = state.pawn("white")
+def _record_transition(state: QuoridorState, action: Action, viewer: Color) -> DemoTransition:
+    from_pos = state.pawn(viewer)
     legal = get_legal_actions(state)
     return DemoTransition(
-        obs=to_observation(state, "white"),
-        action=encode_for_viewer(action, from_pos, "white"),
-        mask=legal_action_mask_agent_frame(legal, "white", from_pos=from_pos),
+        obs=to_observation(state, viewer),
+        action=encode_for_viewer(action, from_pos, viewer),
+        mask=legal_action_mask_agent_frame(legal, viewer, from_pos=from_pos),
     )
+
+
+def _record_white_transition(state: QuoridorState, action: Action) -> DemoTransition:
+    return _record_transition(state, action, "white")
+
+
+def collect_win_transitions(
+    *,
+    target: Color,
+    choose: Chooser,
+    n_wins: int,
+    max_games: int = DEFAULT_WHITE_DEMO_MAX_GAMES,
+    max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
+    seed: int = 0,
+    reseed_stdlib: bool = False,
+    log_label: str = "win demos",
+) -> list[DemoTransition]:
+    """Play games with ``choose``; keep ``target``'s transitions from its wins."""
+    if n_wins <= 0:
+        return []
+
+    collected: list[DemoTransition] = []
+    wins = 0
+    games = 0
+    other_wins = 0
+    unfinished = 0
+    for game_i in range(max_games):
+        games = game_i + 1
+        game_seed = seed + game_i * 1009
+        if reseed_stdlib:
+            random.seed(game_seed)
+        rng = random.Random(game_seed)
+        game = Game.from_initial()
+        pending: list[DemoTransition] = []
+        plies = 0
+        for _ in range(max_moves):
+            if game.is_finished:
+                break
+            color = game.state.current_player
+            action = choose(game.state, color, rng)
+            if color == target:
+                pending.append(_record_transition(game.state, action, target))
+            game.play(action)
+            plies += 1
+        if game.winner == target and pending:
+            collected.extend(pending)
+            wins += 1
+            logger.info("%s: game %d target win in %d plies", log_label, games, plies)
+            if wins >= n_wins:
+                break
+        elif game.winner is None:
+            unfinished += 1
+        else:
+            other_wins += 1
+
+    logger.info(
+        "%s: target_wins=%d other_wins=%d unfinished=%d / %d games, "
+        "transitions=%d (requested %d wins, target=%s)",
+        log_label,
+        wins,
+        other_wins,
+        unfinished,
+        games,
+        len(collected),
+        n_wins,
+        target,
+    )
+    if wins < n_wins:
+        logger.warning(
+            "%s collection stopped at %d wins (wanted %d)",
+            log_label,
+            wins,
+            n_wins,
+        )
+    return collected
 
 
 def collect_white_win_transitions(
@@ -110,47 +189,73 @@ def collect_white_win_transitions(
     actually finish. Those trajectories are the positive examples PPO never
     sees against a first-player racer.
     """
-    if n_wins <= 0:
-        return []
 
-    rng = random.Random(seed)
-    collected: list[DemoTransition] = []
-    wins = 0
-    games = 0
-    for game_i in range(max_games):
-        games = game_i + 1
-        game = Game.from_initial()
-        pending: list[DemoTransition] = []
-        for _ in range(max_moves):
-            if game.is_finished:
-                break
-            color = game.state.current_player
-            if color == "white":
-                action = greedy_race_action(game.state, "white")
-                pending.append(_record_white_transition(game.state, action))
-            else:
-                action = _random_legal_action(game.state, rng)
-            game.play(action)
-        if game.winner == "white" and pending:
-            collected.extend(pending)
-            wins += 1
-            if wins >= n_wins:
-                break
+    def choose(state: QuoridorState, color: Color, rng: random.Random) -> Action:
+        if color == "white":
+            return greedy_race_action(state, "white")
+        return _random_legal_action(state, rng)
 
-    logger.info(
-        "White-win demos: wins=%d/%d games, transitions=%d (requested %d wins)",
-        wins,
-        games,
-        len(collected),
-        n_wins,
+    return collect_win_transitions(
+        target="white",
+        choose=choose,
+        n_wins=n_wins,
+        max_games=max_games,
+        max_moves=max_moves,
+        seed=seed,
+        log_label="White-win demos",
     )
-    if wins < n_wins:
-        logger.warning(
-            "White-win demo collection stopped at %d wins (wanted %d)",
-            wins,
-            n_wins,
-        )
-    return collected
+
+
+def _normal_chooser() -> Chooser:
+    from app.infrastructure.ai.factory import ai_for_difficulty
+
+    normal = ai_for_difficulty("normal")
+
+    def choose(state: QuoridorState, color: Color, rng: random.Random) -> Action:
+        del rng
+        return normal.select_move(state, color)
+
+    return choose
+
+
+def play_normal_vs_normal_game(
+    game_i: int,
+    *,
+    max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
+) -> tuple[str | None, int]:
+    """One Normal vs Normal game. Importable so multiprocessing spawn can pickle it."""
+    random.seed(game_i * 1009)
+    choose = _normal_chooser()
+    game = Game.from_initial()
+    plies = 0
+    dummy = random.Random(0)
+    for _ in range(max_moves):
+        if game.is_finished:
+            break
+        color = game.state.current_player
+        game.play(choose(game.state, color, dummy))
+        plies += 1
+    return game.winner, plies
+
+
+def collect_black_wins_vs_normal(
+    *,
+    n_wins: int,
+    max_games: int = DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
+    max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
+    seed: int = 0,
+) -> list[DemoTransition]:
+    """Play Normal Black vs Normal White; keep Black transitions from Black wins."""
+    return collect_win_transitions(
+        target="black",
+        choose=_normal_chooser(),
+        n_wins=n_wins,
+        max_games=max_games,
+        max_moves=max_moves,
+        seed=seed,
+        reseed_stdlib=True,
+        log_label="Black-win vs Normal demos",
+    )
 
 
 def behavior_clone(
@@ -199,7 +304,7 @@ def behavior_clone(
         policy.set_training_mode(was_training)
 
     logger.info(
-        "White-win BC: transitions=%d epochs=%d last_loss=%.4f",
+        "BC: transitions=%d epochs=%d last_loss=%.4f",
         n,
         epochs,
         last_loss,
