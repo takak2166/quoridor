@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import multiprocessing as mp
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
@@ -28,7 +29,8 @@ DEFAULT_WHITE_DEMO_EPOCHS = 4
 DEFAULT_WHITE_DEMO_MAX_GAMES = 240
 DEFAULT_WHITE_DEMO_MAX_MOVES = 200
 DEFAULT_BLACK_DEMO_WINS = 48
-DEFAULT_BLACK_VS_NORMAL_MAX_GAMES = 64
+DEFAULT_BLACK_VS_NORMAL_MAX_GAMES = 800
+DEFAULT_BLACK_DEMO_WORKERS = 1
 
 Chooser = Callable[[QuoridorState, Color, random.Random], Action]
 
@@ -224,18 +226,32 @@ def play_normal_vs_normal_game(
     max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
 ) -> tuple[str | None, int]:
     """One Normal vs Normal game. Importable so multiprocessing spawn can pickle it."""
-    random.seed(game_i * 1009)
+    winner, plies, _pending = _play_black_demo_game((game_i * 1009, max_moves))
+    return winner, plies
+
+
+def _play_black_demo_game(
+    payload: tuple[int, int],
+) -> tuple[str | None, int, list[DemoTransition]]:
+    game_seed, max_moves = payload
+    random.seed(game_seed)
     choose = _normal_chooser()
     game = Game.from_initial()
-    plies = 0
+    pending: list[DemoTransition] = []
     dummy = random.Random(0)
+    plies = 0
     for _ in range(max_moves):
         if game.is_finished:
             break
         color = game.state.current_player
-        game.play(choose(game.state, color, dummy))
+        action = choose(game.state, color, dummy)
+        if color == "black":
+            pending.append(_record_transition(game.state, action, "black"))
+        game.play(action)
         plies += 1
-    return game.winner, plies
+    if game.winner == "black" and pending:
+        return "black", plies, pending
+    return game.winner, plies, []
 
 
 def collect_black_wins_vs_normal(
@@ -244,18 +260,80 @@ def collect_black_wins_vs_normal(
     max_games: int = DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
     max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
     seed: int = 0,
+    workers: int = DEFAULT_BLACK_DEMO_WORKERS,
 ) -> list[DemoTransition]:
     """Play Normal Black vs Normal White; keep Black transitions from Black wins."""
-    return collect_win_transitions(
-        target="black",
-        choose=_normal_chooser(),
-        n_wins=n_wins,
-        max_games=max_games,
-        max_moves=max_moves,
-        seed=seed,
-        reseed_stdlib=True,
-        log_label="Black-win vs Normal demos",
+    if n_wins <= 0:
+        return []
+    if workers <= 1:
+        return collect_win_transitions(
+            target="black",
+            choose=_normal_chooser(),
+            n_wins=n_wins,
+            max_games=max_games,
+            max_moves=max_moves,
+            seed=seed,
+            reseed_stdlib=True,
+            log_label="Black-win vs Normal demos",
+        )
+
+    collected: list[DemoTransition] = []
+    wins = 0
+    games = 0
+    other_wins = 0
+    unfinished = 0
+    batch = max(workers * 2, workers)
+    payloads = [(seed + i * 1009, max_moves) for i in range(max_games)]
+    ctx = mp.get_context("spawn")
+    with ctx.Pool(processes=workers) as pool:
+        for start in range(0, max_games, batch):
+            if wins >= n_wins:
+                break
+            chunk = payloads[start : start + batch]
+            for winner, plies, pending in pool.map(_play_black_demo_game, chunk):
+                games += 1
+                if pending:
+                    collected.extend(pending)
+                    wins += 1
+                    logger.info(
+                        "Black-win vs Normal demos: game %d target win in %d plies (wins=%d/%d)",
+                        games,
+                        plies,
+                        wins,
+                        n_wins,
+                    )
+                    if wins >= n_wins:
+                        break
+                elif winner is None:
+                    unfinished += 1
+                else:
+                    other_wins += 1
+            logger.info(
+                "Black-win vs Normal demos: progress games=%d wins=%d other=%d unfinished=%d",
+                games,
+                wins,
+                other_wins,
+                unfinished,
+            )
+
+    logger.info(
+        "Black-win vs Normal demos: target_wins=%d other_wins=%d unfinished=%d / %d games, "
+        "transitions=%d (requested %d wins, target=black, workers=%d)",
+        wins,
+        other_wins,
+        unfinished,
+        games,
+        len(collected),
+        n_wins,
+        workers,
     )
+    if wins < n_wins:
+        logger.warning(
+            "Black-win vs Normal demos collection stopped at %d wins (wanted %d)",
+            wins,
+            n_wins,
+        )
+    return collected
 
 
 def behavior_clone(

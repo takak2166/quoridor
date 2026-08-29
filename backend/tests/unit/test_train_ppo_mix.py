@@ -182,3 +182,17 @@ def test_start_stage_skips_completed_white_win_stages() -> None:
     assert [s.opponent for s in remaining] == ["normal"]
     assert remaining[0].timesteps == 92_000
     assert SMOKE_MAX_AGENT_PLIES == 200
+
+
+def test_bc_only_requires_demo_wins(monkeypatch) -> None:
+    import sys
+
+    from app.infrastructure.rl.train_ppo import main
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["train_ppo", "--bc-only", "--white-demo-wins", "0", "--smoke-games", "0"],
+    )
+    with pytest.raises(SystemExit, match="--bc-only requires"):
+        main()

@@ -25,6 +25,7 @@ from app.infrastructure.rl.env import QuoridorEnv
 from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
 from app.infrastructure.rl.train_notify import notify_training_finished
 from app.infrastructure.rl.white_demonstrations import (
+    DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
     DEFAULT_WHITE_DEMO_EPOCHS,
     DEFAULT_WHITE_DEMO_WINS,
     behavior_clone,
@@ -564,11 +565,20 @@ def _clone_white_win_demos(model: MaskablePPO, *, demo_wins: int, epochs: int) -
 
 
 def _clone_black_wins_vs_normal(
-    model: MaskablePPO, *, demo_wins: int, epochs: int
+    model: MaskablePPO,
+    *,
+    demo_wins: int,
+    epochs: int,
+    max_games: int = DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
+    workers: int = 1,
 ) -> None:
     if demo_wins <= 0:
         return
-    demos = collect_black_wins_vs_normal(n_wins=demo_wins)
+    demos = collect_black_wins_vs_normal(
+        n_wins=demo_wins,
+        max_games=max_games,
+        workers=workers,
+    )
     if not demos:
         raise SystemExit(
             "Black-win BC failed: Normal vs Normal produced no first-player wins"
@@ -703,6 +713,23 @@ def main() -> None:
         help="Behavior-cloning epochs over Black-win vs Normal demonstrations",
     )
     parser.add_argument(
+        "--black-demo-max-games",
+        type=int,
+        default=DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
+        help="Max Normal vs Normal games while collecting first-player wins",
+    )
+    parser.add_argument(
+        "--black-demo-workers",
+        type=int,
+        default=16,
+        help="Process workers for Normal vs Normal first-player win collection",
+    )
+    parser.add_argument(
+        "--bc-only",
+        action="store_true",
+        help="Save after behavior cloning and exit (skip PPO)",
+    )
+    parser.add_argument(
         "--agent-white-prob",
         type=float,
         default=None,
@@ -744,6 +771,8 @@ def main() -> None:
     imitation_bonus = args.imitation_bonus
     if imitation_bonus is None:
         imitation_bonus = DEFAULT_WHITE_WIN_IMITATION_BONUS if args.white_win_ramp else 0.0
+    if args.bc_only and demo_wins <= 0 and black_demo_wins <= 0:
+        raise SystemExit("--bc-only requires --white-demo-wins or --black-demo-wins")
 
     stages = _build_stages(
         timesteps=args.timesteps,
@@ -840,10 +869,19 @@ def main() -> None:
                         cloned,
                         demo_wins=black_demo_wins,
                         epochs=args.black_demo_epochs,
+                        max_games=args.black_demo_max_games,
+                        workers=args.black_demo_workers,
                     )
                     bc_path = checkpoint_dir / "ppo_bc.zip"
                     cloned.save(str(bc_path))
                     logger.info("Saved BC checkpoint to %s", bc_path)
+                    if args.bc_only:
+                        out = Path(args.output)
+                        out.parent.mkdir(parents=True, exist_ok=True)
+                        cloned.save(str(out))
+                        logger.info("BC-only: saved to %s", out)
+                        notify_status = "success"
+                        return
                 finally:
                     dummy.close()
 

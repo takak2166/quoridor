@@ -17,7 +17,7 @@ from app.infrastructure.rl.white_demonstrations import (
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--games", type=int, default=24)
-    parser.add_argument("--workers", type=int, default=8)
+    parser.add_argument("--workers", type=int, default=16)
     parser.add_argument(
         "--collect-wins",
         type=int,
