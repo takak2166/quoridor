@@ -100,16 +100,58 @@ def test_agent_white_prob_one_always_white() -> None:
         assert env.agent_color == "white"
 
 
-def test_white_imitation_bonus_for_greedy_forward() -> None:
+@pytest.mark.parametrize("color", ("white", "black"))
+def test_imitation_bonus_for_greedy_forward(color: str) -> None:
     env = QuoridorEnv(
-        agent_color="white",
+        agent_color=color,  # type: ignore[arg-type]
         opponent="random",
         reward_shaping=False,
         imitation_bonus=0.2,
         randomize_agent_color=False,
     )
-    env.reset(options={"agent_color": "white"})
+    env.reset(options={"agent_color": color})
     _, reward, terminated, _, _ = env.step(FORWARD_STEP_INDEX)
+    assert not terminated
+    assert reward == 0.2
+
+
+def test_black_imitation_bonus_skips_sideways_on_empty_board() -> None:
+    env = QuoridorEnv(
+        agent_color="black",
+        opponent="random",
+        reward_shaping=False,
+        imitation_bonus=0.2,
+        randomize_agent_color=False,
+        opening_wall_free_plies=2,
+    )
+    env.reset(options={"agent_color": "black"})
+    _, reward, terminated, _, _ = env.step(3)  # agent-frame right
+    assert not terminated
+    assert reward == 0.0
+
+
+def test_black_imitation_bonus_for_detour_around_face_wall() -> None:
+    env = QuoridorEnv(
+        agent_color="black",
+        opponent="random",
+        reward_shaping=False,
+        imitation_bonus=0.2,
+        randomize_agent_color=False,
+    )
+    env.reset(options={"agent_color": "black"})
+    walls = [list(row) for row in empty_walls()]
+    walls[1][3] = True
+    env._state = QuoridorState(
+        white=(8, 4),
+        black=(1, 4),
+        white_walls_remaining=10,
+        black_walls_remaining=10,
+        horizontal_walls=tuple(tuple(row) for row in walls),
+        vertical_walls=empty_walls(),
+        current_player="black",
+    )
+    env._agent_plies_played = 1
+    _, reward, terminated, _, _ = env.step(3)  # right around H(1,3)
     assert not terminated
     assert reward == 0.2
 

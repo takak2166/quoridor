@@ -257,10 +257,8 @@ class QuoridorEnv(gym.Env):
         else:
             reward = terminal_reward
         reward += revisit
-        if (
-            self.imitation_bonus > 0.0
-            and self.agent_color == "white"
-            and is_greedy_race_action(state_before, "white", move, self._cache)
+        if self.imitation_bonus > 0.0 and is_greedy_race_action(
+            state_before, self.agent_color, move, self._cache
         ):
             reward += self.imitation_bonus
 

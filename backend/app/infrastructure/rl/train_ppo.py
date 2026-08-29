@@ -661,7 +661,7 @@ def main() -> None:
         action="store_true",
         help=(
             "Second-player curriculum: random→very_easy→easy→normal with wanderer "
-            "mix, white-biased resets, racing demos, and white imitation bonus"
+            "mix, white-biased resets, racing demos, and racing imitation bonus"
         ),
     )
     parser.add_argument(
@@ -686,7 +686,7 @@ def main() -> None:
         "--imitation-bonus",
         type=float,
         default=None,
-        help="Extra reward when White matches the greedy racing move (default: 0.2 with --white-win-ramp)",
+        help="Extra reward when the agent matches the greedy racing move (default: 0.2 with --white-win-ramp)",
     )
     parser.add_argument("--tb-log", type=str, default="runs/quoridor")
     parser.add_argument(
