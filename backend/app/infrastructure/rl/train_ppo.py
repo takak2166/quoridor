@@ -581,7 +581,7 @@ def _clone_black_wins_vs_normal(
     )
     if not demos:
         raise SystemExit(
-            "Black-win BC failed: Normal vs Normal produced no first-player wins"
+            "Black-win BC failed: node-limited Normal vs Normal produced no first-player wins"
         )
     behavior_clone(model, demos, epochs=epochs)
 

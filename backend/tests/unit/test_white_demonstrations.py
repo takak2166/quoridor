@@ -69,7 +69,7 @@ def test_collect_black_win_transitions_against_random_white() -> None:
     assert any(np.array_equal(item.obs, opening) for item in transitions)
 
 
-def test_collect_black_wins_vs_normal_wires_factory(monkeypatch) -> None:
+def test_collect_black_wins_vs_normal_uses_chooser(monkeypatch) -> None:
     """Keep this off real minimax: greedy Black vs random White is a fast stand-in."""
     import random
 
@@ -79,16 +79,15 @@ def test_collect_black_wins_vs_normal_wires_factory(monkeypatch) -> None:
         greedy_race_action,
     )
 
-    class _FakeNormal:
-        def select_move(self, state, color):
+    def fake_chooser():
+        def choose(state, color, rng):
             if color == "black":
                 return greedy_race_action(state, "black")
             return _random_legal_action(state, random.Random(0))
 
-    monkeypatch.setattr(
-        "app.infrastructure.ai.factory.ai_for_difficulty",
-        lambda _difficulty: _FakeNormal(),
-    )
+        return choose
+
+    monkeypatch.setattr(wd, "_normal_chooser", fake_chooser)
     transitions = wd.collect_black_wins_vs_normal(n_wins=1, max_games=40, seed=0)
     assert transitions
     assert all(item.obs.shape == (135,) for item in transitions)

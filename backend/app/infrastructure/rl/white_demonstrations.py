@@ -31,6 +31,7 @@ DEFAULT_WHITE_DEMO_MAX_MOVES = 200
 DEFAULT_BLACK_DEMO_WINS = 48
 DEFAULT_BLACK_VS_NORMAL_MAX_GAMES = 800
 DEFAULT_BLACK_DEMO_WORKERS = 1
+DEFAULT_BLACK_PROBE_GAMES = 24
 
 Chooser = Callable[[QuoridorState, Color, random.Random], Action]
 
@@ -117,6 +118,7 @@ def collect_win_transitions(
     seed: int = 0,
     reseed_stdlib: bool = False,
     log_label: str = "win demos",
+    stop_if_no_wins_after: int | None = None,
 ) -> list[DemoTransition]:
     """Play games with ``choose``; keep ``target``'s transitions from its wins."""
     if n_wins <= 0:
@@ -155,6 +157,13 @@ def collect_win_transitions(
             unfinished += 1
         else:
             other_wins += 1
+        if stop_if_no_wins_after and games >= stop_if_no_wins_after and wins == 0:
+            logger.warning(
+                "%s: 0/%d target wins; stopping early",
+                log_label,
+                games,
+            )
+            break
 
     logger.info(
         "%s: target_wins=%d other_wins=%d unfinished=%d / %d games, "
@@ -209,13 +218,26 @@ def collect_white_win_transitions(
 
 
 def _normal_chooser() -> Chooser:
-    from app.infrastructure.ai.factory import ai_for_difficulty
+    from app.config import settings
+    from app.infrastructure.ai.minimax import MinimaxConfig, NormalMinimaxPolicy
 
-    normal = ai_for_difficulty("normal")
+    # Bind search by max_nodes, not the live 400ms budget. Parallel collection
+    # with a wall-clock limit aborts mid-search and invents Black wins that
+    # sequential Normal vs Normal never plays (all White, 64 plies).
+    policy = NormalMinimaxPolicy(
+        config=MinimaxConfig(
+            time_budget_ms=60_000,
+            max_nodes=settings.minimax_max_nodes_normal,
+            max_wall_candidates=10,
+            two_phase_search=True,
+            primary_depth=settings.minimax_depth_normal,
+            fallback_depth=max(2, settings.minimax_depth_normal - 2),
+        )
+    )
 
     def choose(state: QuoridorState, color: Color, rng: random.Random) -> Action:
         del rng
-        return normal.select_move(state, color)
+        return policy.select_move(state, color)
 
     return choose
 
@@ -262,7 +284,11 @@ def collect_black_wins_vs_normal(
     seed: int = 0,
     workers: int = DEFAULT_BLACK_DEMO_WORKERS,
 ) -> list[DemoTransition]:
-    """Play Normal Black vs Normal White; keep Black transitions from Black wins."""
+    """Play Normal Black vs Normal White; keep Black transitions from Black wins.
+
+    Search is node-limited (not the live 400ms budget) so parallel workers do
+    not time-abort into fake first-player wins.
+    """
     if n_wins <= 0:
         return []
     if workers <= 1:
@@ -275,6 +301,7 @@ def collect_black_wins_vs_normal(
             seed=seed,
             reseed_stdlib=True,
             log_label="Black-win vs Normal demos",
+            stop_if_no_wins_after=DEFAULT_BLACK_PROBE_GAMES,
         )
 
     collected: list[DemoTransition] = []
@@ -315,6 +342,12 @@ def collect_black_wins_vs_normal(
                 other_wins,
                 unfinished,
             )
+            if games >= DEFAULT_BLACK_PROBE_GAMES and wins == 0:
+                logger.warning(
+                    "Black-win vs Normal demos: 0/%d first-player wins; stopping early",
+                    games,
+                )
+                break
 
     logger.info(
         "Black-win vs Normal demos: target_wins=%d other_wins=%d unfinished=%d / %d games, "
