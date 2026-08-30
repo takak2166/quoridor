@@ -60,7 +60,7 @@ def mcts_search(
                 expansion_prior = root_prior
             else:
                 expansion_prior = _normalized_prior(
-                    prior_fn(node.state, color),
+                    prior_fn(node.state, node.player),
                     node.untried,
                     from_pos,
                 )
@@ -132,11 +132,14 @@ def _select_child(node: _MCTSNode, root_color: Color, c_puct: float, prior_fn) -
     total = sum(child.visits for child in node.children.values())
     child_actions = [child.action for child in node.children.values() if child.action is not None]
     from_pos = node.state.pawn(node.player)
-    prior = _normalized_prior(prior_fn(node.state, root_color), child_actions, from_pos)
+    prior = _normalized_prior(prior_fn(node.state, node.player), child_actions, from_pos)
     best_score = -math.inf
     best_child = next(iter(node.children.values()))
     for child in node.children.values():
         q = child.value_sum / child.visits if child.visits else 0.0
+        # value_sum is from the root player's view; the opponent minimizes it.
+        if node.player != root_color:
+            q = -q
         p = prior.get(encode(child.action, from_pos=from_pos), 0.0)  # type: ignore[arg-type]
         u = c_puct * p * math.sqrt(total + 1) / (1 + child.visits)
         score = q + u
