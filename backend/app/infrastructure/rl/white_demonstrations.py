@@ -16,7 +16,7 @@ from sb3_contrib import MaskablePPO
 from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame
 from app.mappers.observation_mapper import to_observation
 from quoridor.agent_frame import encode_for_viewer
-from quoridor.domain.actions import Action, Move
+from quoridor.domain.actions import Action, Move, WallSlot
 from quoridor.domain.game import Game
 from quoridor.domain.state import Color, QuoridorState
 from quoridor.pathfinding import DistanceCache, distances
@@ -32,6 +32,8 @@ DEFAULT_BLACK_DEMO_WINS = 48
 DEFAULT_BLACK_VS_NORMAL_MAX_GAMES = 800
 DEFAULT_BLACK_DEMO_WORKERS = 1
 DEFAULT_BLACK_PROBE_GAMES = 24
+DEFAULT_EXPERT_VS_NORMAL_MAX_GAMES = 64
+DEFAULT_EXPERT_MCTS_BUDGET_MS = 450
 
 Chooser = Callable[[QuoridorState, Color, random.Random], Action]
 
@@ -217,14 +219,24 @@ def collect_white_win_transitions(
     )
 
 
-def _normal_chooser() -> Chooser:
+def _format_action(action: Action) -> str:
+    if isinstance(action, Move):
+        dest = action.to if action.to is not None else action.direction
+        return f"M{dest}"
+    if isinstance(action, WallSlot):
+        orient = "H" if action.orientation == "horizontal" else "V"
+        return f"{orient}({action.row},{action.col})"
+    return str(action)
+
+
+def _node_limited_normal_policy():
     from app.config import settings
     from app.infrastructure.ai.minimax import MinimaxConfig, NormalMinimaxPolicy
 
     # Bind search by max_nodes, not the live 400ms budget. Parallel collection
     # with a wall-clock limit aborts mid-search and invents Black wins that
     # sequential Normal vs Normal never plays (all White, 64 plies).
-    policy = NormalMinimaxPolicy(
+    return NormalMinimaxPolicy(
         config=MinimaxConfig(
             time_budget_ms=60_000,
             max_nodes=settings.minimax_max_nodes_normal,
@@ -235,9 +247,29 @@ def _normal_chooser() -> Chooser:
         )
     )
 
+
+def _normal_chooser() -> Chooser:
+    policy = _node_limited_normal_policy()
+
     def choose(state: QuoridorState, color: Color, rng: random.Random) -> Action:
         del rng
         return policy.select_move(state, color)
+
+    return choose
+
+
+def _expert_vs_normal_chooser(*, budget_ms: int = DEFAULT_EXPERT_MCTS_BUDGET_MS) -> Chooser:
+    from app.config import settings
+    from app.infrastructure.ai.factory import ExpertMCTSPolicy
+
+    expert = ExpertMCTSPolicy(model_path=settings.model_expert, budget_ms=budget_ms)
+    normal = _node_limited_normal_policy()
+
+    def choose(state: QuoridorState, color: Color, rng: random.Random) -> Action:
+        del rng
+        if color == "black":
+            return expert.select_move(state, color)
+        return normal.select_move(state, color)
 
     return choose
 
@@ -367,6 +399,100 @@ def collect_black_wins_vs_normal(
             n_wins,
         )
     return collected
+
+
+def _play_match_with_chooser(
+    choose: Chooser,
+    *,
+    game_seed: int,
+    max_moves: int,
+    record_black: bool,
+) -> tuple[str | None, int, str, list[DemoTransition]]:
+    random.seed(game_seed)
+    game = Game.from_initial()
+    pending: list[DemoTransition] = []
+    dummy = random.Random(0)
+    plies = 0
+    opening: list[str] = []
+    for _ in range(max_moves):
+        if game.is_finished:
+            break
+        color = game.state.current_player
+        action = choose(game.state, color, dummy)
+        if color == "black":
+            if len(opening) < 3:
+                opening.append(_format_action(action))
+            if record_black:
+                pending.append(_record_transition(game.state, action, "black"))
+        game.play(action)
+        plies += 1
+    if game.winner != "black":
+        pending = []
+    return game.winner, plies, ",".join(opening), pending
+
+
+def play_expert_black_vs_normal_white(
+    game_i: int,
+    *,
+    max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
+    budget_ms: int = DEFAULT_EXPERT_MCTS_BUDGET_MS,
+) -> tuple[str | None, int, str]:
+    """Expert (MCTS, first) vs node-limited Normal (second)."""
+    winner, plies, opening, _pending = _play_match_with_chooser(
+        _expert_vs_normal_chooser(budget_ms=budget_ms),
+        game_seed=game_i * 1009,
+        max_moves=max_moves,
+        record_black=False,
+    )
+    return winner, plies, opening
+
+
+def iter_expert_black_vs_normal_games(
+    n_games: int,
+    *,
+    seed: int = 0,
+    max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
+    budget_ms: int = DEFAULT_EXPERT_MCTS_BUDGET_MS,
+):
+    """Reuse one Expert+Normal pair so the PPO zip is loaded once."""
+    choose = _expert_vs_normal_chooser(budget_ms=budget_ms)
+    for game_i in range(n_games):
+        winner, plies, opening, _pending = _play_match_with_chooser(
+            choose,
+            game_seed=seed + game_i * 1009,
+            max_moves=max_moves,
+            record_black=False,
+        )
+        yield winner, plies, opening
+
+
+def collect_black_wins_expert_vs_normal(
+    *,
+    n_wins: int,
+    max_games: int = DEFAULT_EXPERT_VS_NORMAL_MAX_GAMES,
+    max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
+    seed: int = 0,
+    budget_ms: int = DEFAULT_EXPERT_MCTS_BUDGET_MS,
+    stop_if_no_wins_after: int = 8,
+) -> list[DemoTransition]:
+    """Play Expert Black vs Normal White sequentially; keep Black's winning games.
+
+    Sequential on purpose: MCTS is wall-clock limited (450ms). Parallel workers
+    starve the budget the same way 400ms Normal did.
+    """
+    if n_wins <= 0:
+        return []
+    return collect_win_transitions(
+        target="black",
+        choose=_expert_vs_normal_chooser(budget_ms=budget_ms),
+        n_wins=n_wins,
+        max_games=max_games,
+        max_moves=max_moves,
+        seed=seed,
+        reseed_stdlib=True,
+        log_label="Black-win Expert vs Normal demos",
+        stop_if_no_wins_after=stop_if_no_wins_after,
+    )
 
 
 def behavior_clone(

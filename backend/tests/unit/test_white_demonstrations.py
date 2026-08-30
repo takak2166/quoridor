@@ -91,3 +91,28 @@ def test_collect_black_wins_vs_normal_uses_chooser(monkeypatch) -> None:
     transitions = wd.collect_black_wins_vs_normal(n_wins=1, max_games=40, seed=0)
     assert transitions
     assert all(item.obs.shape == (135,) for item in transitions)
+
+
+def test_collect_black_wins_expert_vs_normal_uses_chooser(monkeypatch) -> None:
+    import random
+
+    from app.infrastructure.rl import white_demonstrations as wd
+    from app.infrastructure.rl.white_demonstrations import (
+        _random_legal_action,
+        greedy_race_action,
+    )
+
+    def fake_chooser(*, budget_ms=450):
+        del budget_ms
+
+        def choose(state, color, rng):
+            if color == "black":
+                return greedy_race_action(state, "black")
+            return _random_legal_action(state, random.Random(0))
+
+        return choose
+
+    monkeypatch.setattr(wd, "_expert_vs_normal_chooser", fake_chooser)
+    transitions = wd.collect_black_wins_expert_vs_normal(n_wins=1, max_games=40, seed=0)
+    assert transitions
+    assert all(item.obs.shape == (135,) for item in transitions)
