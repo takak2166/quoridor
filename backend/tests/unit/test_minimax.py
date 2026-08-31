@@ -195,3 +195,38 @@ def test_very_easy_never_plays_wall() -> None:
         assert isinstance(action, Move)
         assert not isinstance(action, WallSlot)
 
+
+def test_normal_shortens_path_instead_of_oscillating_on_back_rank() -> None:
+    """Regression: shared reachability cache must not make Normal retreat from (8,5)."""
+    from dataclasses import replace
+
+    from app.config import settings
+    from app.infrastructure.ai.minimax import MinimaxConfig, NormalMinimaxPolicy
+    from quoridor.domain.actions import Move
+    from tests.unit.fixtures.plan_fixtures import build_state
+
+    state = replace(
+        build_state(
+            white=(8, 5),
+            black=(3, 5),
+            current="white",
+            h=frozenset([(1, 3), (3, 2), (3, 4), (3, 6), (4, 0), (4, 3), (6, 4), (7, 3), (7, 5)]),
+            v=frozenset([(2, 5), (3, 0), (3, 3), (3, 7), (7, 6)]),
+        ),
+        white_walls_remaining=0,
+        black_walls_remaining=6,
+    )
+    policy = NormalMinimaxPolicy(
+        config=MinimaxConfig(
+            time_budget_ms=60_000,
+            max_nodes=settings.minimax_max_nodes_normal,
+            max_wall_candidates=10,
+            two_phase_search=True,
+            primary_depth=settings.minimax_depth_normal,
+            fallback_depth=max(2, settings.minimax_depth_normal - 2),
+        )
+    )
+    chosen = policy.select_move(state, "white")
+    assert isinstance(chosen, Move)
+    assert chosen.to == (8, 4)
+

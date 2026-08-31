@@ -194,12 +194,24 @@ def both_reachable(
     ok = both_reachable_one_pass(state)
     if cache is not None:
         if ok:
+            # Sentinel: both paths exist. Not a real distance — `distances()`
+            # must recompute instead of treating this as "both at goal".
             cache.set(key, 0, 0)
         else:
             dw = _bfs_distance(state, "white", for_evaluation=False)
             db = _bfs_distance(state, "black", for_evaluation=False)
             cache.set(key, dw, db)
     return ok
+
+
+def _is_reachable_sentinel(
+    state: QuoridorState,
+    cached: tuple[int | None, int | None],
+) -> bool:
+    """True when the cache holds both_reachable's success marker, not BFS lengths."""
+    if cached != (0, 0):
+        return False
+    return state.white[0] != GOAL_ROW["white"] or state.black[0] != GOAL_ROW["black"]
 
 
 def distances(
@@ -209,7 +221,7 @@ def distances(
     key = state_hash(state)
     if cache is not None:
         cached = cache.get(key)
-        if cached is not None:
+        if cached is not None and not _is_reachable_sentinel(state, cached):
             return cached
     dw = _bfs_distance(state, "white", for_evaluation=True)
     db = _bfs_distance(state, "black", for_evaluation=True)
