@@ -43,3 +43,17 @@ def test_replay_recorded_black_win_vs_normal() -> None:
     result = replay_scoresheet(text)
     assert result.winner == "black"
     assert result.plies == 79
+
+
+def test_m14_scoresheet_is_the_hard_opening_line() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet
+
+    fixture = Path(__file__).parent / "fixtures" / "black_win_vs_normal_m14.txt"
+    specs = parse_scoresheet(fixture.read_text(encoding="utf-8"))
+    assert len(specs) == 63
+    assert specs[0] == ("M", 1, 4)
+    assert specs[1] == ("H", 1, 3)
+    assert specs[2] == ("M", 1, 5)
+    assert specs[3] == ("M", 8, 5)
