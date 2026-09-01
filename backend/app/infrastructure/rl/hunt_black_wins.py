@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from app.infrastructure.rl.white_demonstrations import (
@@ -18,6 +19,8 @@ from quoridor.rules import get_legal_actions
 PrefixSpec = tuple[str, int, int]
 
 BLACK_KINDS = ("normal", "greedy", "deep")
+
+_SCORESHEET_TOKEN = re.compile(r"([MHV])\((\d+),\s*(\d+)\)")
 
 
 @dataclass(frozen=True)
@@ -59,6 +62,46 @@ def resolve_prefix_action(state: QuoridorState, spec: PrefixSpec) -> Action | No
         col=col,
     )
     return next((act for act in legal if act == want), None)
+
+
+def parse_scoresheet(text: str) -> list[PrefixSpec]:
+    for line in text.splitlines():
+        if line.startswith("scoresheet="):
+            text = line.split("=", 1)[1]
+            break
+    return [
+        (match.group(1), int(match.group(2)), int(match.group(3)))
+        for match in _SCORESHEET_TOKEN.finditer(text)
+    ]
+
+
+def format_numbered_scoresheet(specs: list[PrefixSpec] | tuple[PrefixSpec, ...]) -> str:
+    lines: list[str] = []
+    for ply, spec in enumerate(specs, start=1):
+        side = "Black" if ply % 2 == 1 else "White"
+        lines.append(f"{ply:3d}. {side} {format_prefix_spec(spec)}")
+    return "\n".join(lines)
+
+
+def replay_scoresheet(text: str) -> HuntResult:
+    specs = tuple(parse_scoresheet(text))
+    game = Game.from_initial()
+    labels: list[str] = []
+    for spec in specs:
+        action = resolve_prefix_action(game.state, spec)
+        if action is None:
+            return HuntResult(
+                winner="illegal",
+                plies=len(labels),
+                opening=",".join(labels) if labels else format_prefix_spec(spec),
+                scoresheet=",".join(labels),
+                tag="replay",
+            )
+        labels.append(_format_action(action))
+        game.play(action)
+        if game.is_finished:
+            return _result_from_game(game, labels, "replay")
+    return _result_from_game(game, labels, "replay")
 
 
 def apply_prefix(specs: tuple[PrefixSpec, ...]) -> QuoridorState | None:

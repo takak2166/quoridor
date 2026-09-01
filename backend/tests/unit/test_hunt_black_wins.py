@@ -30,3 +30,16 @@ def test_illegal_prefix_is_reported_without_search() -> None:
     result = play_opening_vs_normal(((("M", 8, 8),), 8, "normal", "bad"))
     assert result.winner == "illegal"
     assert result.plies == 0
+
+
+def test_replay_recorded_black_win_vs_normal() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, replay_scoresheet
+
+    fixture = Path(__file__).parent / "fixtures" / "black_win_vs_normal_h73.txt"
+    text = fixture.read_text(encoding="utf-8")
+    assert len(parse_scoresheet(text)) == 79
+    result = replay_scoresheet(text)
+    assert result.winner == "black"
+    assert result.plies == 79

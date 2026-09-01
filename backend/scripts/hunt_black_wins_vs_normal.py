@@ -7,6 +7,7 @@ import argparse
 import collections
 import multiprocessing as mp
 import os
+import re
 import sys
 from pathlib import Path
 
@@ -14,7 +15,9 @@ from app.infrastructure.rl.hunt_black_wins import (
     BLACK_KINDS,
     HuntResult,
     encode_prefix_action,
+    format_numbered_scoresheet,
     format_prefix_spec,
+    parse_scoresheet,
     play_opening_vs_normal,
 )
 from app.infrastructure.rl.white_demonstrations import _format_action, _node_limited_normal_policy
@@ -122,7 +125,9 @@ def _asymmetric_payloads(max_moves: int, black_kind: str) -> list[Payload]:
 
 def _save_win(out_dir: Path, result: HuntResult, index: int) -> Path:
     out_dir.mkdir(parents=True, exist_ok=True)
-    path = out_dir / f"black_win_{index:03d}_{result.tag.replace(':', '_').replace('/', '_')}.txt"
+    safe_tag = re.sub(r"[^A-Za-z0-9._-]+", "_", result.tag).strip("_")
+    path = out_dir / f"black_win_{index:03d}_{safe_tag}.txt"
+    numbered = format_numbered_scoresheet(parse_scoresheet(result.scoresheet))
     path.write_text(
         "\n".join(
             [
@@ -131,6 +136,8 @@ def _save_win(out_dir: Path, result: HuntResult, index: int) -> Path:
                 f"plies={result.plies}",
                 f"opening={result.opening}",
                 f"scoresheet={result.scoresheet}",
+                "",
+                numbered,
                 "",
             ]
         ),
