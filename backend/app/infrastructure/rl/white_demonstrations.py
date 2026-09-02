@@ -7,6 +7,7 @@ import multiprocessing as mp
 import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -108,6 +109,83 @@ def _record_transition(state: QuoridorState, action: Action, viewer: Color) -> D
 
 def _record_white_transition(state: QuoridorState, action: Action) -> DemoTransition:
     return _record_transition(state, action, "white")
+
+
+def black_transitions_from_scoresheet(text: str) -> list[DemoTransition]:
+    """Replay a saved scoresheet and keep Black's (first-player) transitions."""
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
+
+    specs = parse_scoresheet(text)
+    if not specs:
+        return []
+    game = Game.from_initial()
+    pending: list[DemoTransition] = []
+    for spec in specs:
+        action = resolve_prefix_action(game.state, spec)
+        if action is None:
+            logger.warning("scoresheet illegal at ply %d spec=%s", len(pending) * 2 + 1, spec)
+            return []
+        if game.state.current_player == "black":
+            pending.append(_record_transition(game.state, action, "black"))
+        game.play(action)
+        if game.is_finished:
+            break
+    if game.winner != "black" or not pending:
+        return []
+    return pending
+
+
+def load_black_win_transitions(
+    source: str | Path,
+    *,
+    upsample_m14: int = 1,
+) -> list[DemoTransition]:
+    """Load unique Black-win scoresheets from a file or directory of ``*.txt``."""
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet
+
+    path = Path(source)
+    if path.is_dir():
+        files = sorted(child for child in path.glob("*.txt") if child.is_file())
+    elif path.is_file():
+        files = [path]
+    else:
+        raise FileNotFoundError(f"black-win scoresheets not found: {path}")
+
+    seen: set[tuple] = set()
+    collected: list[DemoTransition] = []
+    m14: list[DemoTransition] = []
+    games = 0
+    for file in files:
+        text = file.read_text(encoding="utf-8")
+        if "scoresheet=" not in text:
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            if not (len(lines) == 1 and lines[0][:1] in {"M", "H", "V"}):
+                continue
+        specs = tuple(parse_scoresheet(text))
+        if not specs or specs in seen:
+            continue
+        transitions = black_transitions_from_scoresheet(text)
+        if not transitions:
+            continue
+        seen.add(specs)
+        collected.extend(transitions)
+        games += 1
+        if specs[0] == ("M", 1, 4):
+            m14.extend(transitions)
+
+    extra = max(0, int(upsample_m14) - 1)
+    if m14 and extra:
+        collected.extend(m14 * extra)
+
+    logger.info(
+        "Black-win scoresheets: unique_games=%d transitions=%d m14=%d upsample=%d from %s",
+        games,
+        len(collected),
+        len(m14),
+        max(1, int(upsample_m14)),
+        path,
+    )
+    return collected
 
 
 def collect_win_transitions(

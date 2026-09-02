@@ -116,3 +116,47 @@ def test_collect_black_wins_expert_vs_normal_uses_chooser(monkeypatch) -> None:
     transitions = wd.collect_black_wins_expert_vs_normal(n_wins=1, max_games=40, seed=0)
     assert transitions
     assert all(item.obs.shape == (135,) for item in transitions)
+
+
+def test_black_transitions_from_m14_scoresheet() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.white_demonstrations import (
+        black_transitions_from_scoresheet,
+        load_black_win_transitions,
+    )
+    from quoridor.domain.actions import FORWARD_STEP_INDEX
+
+    fixture = Path(__file__).parent / "fixtures" / "black_win_vs_normal_m14.txt"
+    transitions = black_transitions_from_scoresheet(fixture.read_text(encoding="utf-8"))
+    assert len(transitions) == 32
+    assert transitions[0].action == FORWARD_STEP_INDEX
+    assert all(item.obs.shape == (135,) for item in transitions)
+    assert all(item.mask.any() for item in transitions)
+    assert all(item.mask[item.action] for item in transitions)
+
+    loaded = load_black_win_transitions(fixture, upsample_m14=3)
+    assert len(loaded) == 32 * 3
+
+
+def test_load_scoresheets_skips_index_without_scoresheet(tmp_path) -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.white_demonstrations import load_black_win_transitions
+
+    fixture = Path(__file__).parent / "fixtures" / "black_win_vs_normal_m14.txt"
+    (tmp_path / "keep.txt").write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "index.txt").write_text("M(1, 4)\tplies=63\n", encoding="utf-8")
+    loaded = load_black_win_transitions(tmp_path, upsample_m14=1)
+    assert len(loaded) == 32
+
+
+def test_load_black_win_transitions_missing_path() -> None:
+    from pathlib import Path
+
+    import pytest
+
+    from app.infrastructure.rl.white_demonstrations import load_black_win_transitions
+
+    with pytest.raises(FileNotFoundError, match="black-win scoresheets"):
+        load_black_win_transitions(Path("/no/such/scoresheets"))

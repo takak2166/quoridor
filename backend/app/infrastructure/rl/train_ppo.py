@@ -31,6 +31,7 @@ from app.infrastructure.rl.white_demonstrations import (
     behavior_clone,
     collect_black_wins_vs_normal,
     collect_white_win_transitions,
+    load_black_win_transitions,
 )
 from quoridor.domain.actions import is_move_index
 
@@ -571,18 +572,26 @@ def _clone_black_wins_vs_normal(
     epochs: int,
     max_games: int = DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
     workers: int = 1,
+    scoresheets: str | None = None,
+    upsample_m14: int = 1,
 ) -> None:
-    if demo_wins <= 0:
-        return
-    demos = collect_black_wins_vs_normal(
-        n_wins=demo_wins,
-        max_games=max_games,
-        workers=workers,
-    )
-    if not demos:
-        raise SystemExit(
-            "Black-win BC failed: node-limited Normal vs Normal produced no first-player wins"
+    demos = []
+    if scoresheets:
+        demos = load_black_win_transitions(scoresheets, upsample_m14=upsample_m14)
+        if not demos:
+            raise SystemExit(f"Black-win BC failed: no first-player wins in {scoresheets}")
+    elif demo_wins > 0:
+        demos = collect_black_wins_vs_normal(
+            n_wins=demo_wins,
+            max_games=max_games,
+            workers=workers,
         )
+        if not demos:
+            raise SystemExit(
+                "Black-win BC failed: node-limited Normal vs Normal produced no first-player wins"
+            )
+    else:
+        return
     behavior_clone(model, demos, epochs=epochs)
 
 
@@ -725,6 +734,18 @@ def main() -> None:
         help="Process workers for Normal vs Normal first-player win collection",
     )
     parser.add_argument(
+        "--black-demo-scoresheets",
+        type=str,
+        default=None,
+        help="File or directory of Black-win scoresheets (skips live collection)",
+    )
+    parser.add_argument(
+        "--black-demo-upsample-m14",
+        type=int,
+        default=8,
+        help="Repeat the M(1,4) Hard-opening win this many times in the BC set",
+    )
+    parser.add_argument(
         "--bc-only",
         action="store_true",
         help="Save after behavior cloning and exit (skip PPO)",
@@ -768,11 +789,14 @@ def main() -> None:
     if demo_wins is None:
         demo_wins = DEFAULT_WHITE_DEMO_WINS if args.white_win_ramp else 0
     black_demo_wins = max(0, int(args.black_demo_wins))
+    black_demo_scoresheets = args.black_demo_scoresheets
     imitation_bonus = args.imitation_bonus
     if imitation_bonus is None:
         imitation_bonus = DEFAULT_WHITE_WIN_IMITATION_BONUS if args.white_win_ramp else 0.0
-    if args.bc_only and demo_wins <= 0 and black_demo_wins <= 0:
-        raise SystemExit("--bc-only requires --white-demo-wins or --black-demo-wins")
+    if args.bc_only and demo_wins <= 0 and black_demo_wins <= 0 and not black_demo_scoresheets:
+        raise SystemExit(
+            "--bc-only requires --white-demo-wins, --black-demo-wins, or --black-demo-scoresheets"
+        )
 
     stages = _build_stages(
         timesteps=args.timesteps,
@@ -828,7 +852,7 @@ def main() -> None:
                 imitation_bonus=imitation_bonus,
             )
 
-            need_preclone = demo_wins > 0 or black_demo_wins > 0
+            need_preclone = demo_wins > 0 or black_demo_wins > 0 or bool(black_demo_scoresheets)
             if model is None and need_preclone:
                 dummy = build_vec_env(
                     stage.opponent,
@@ -871,6 +895,8 @@ def main() -> None:
                         epochs=args.black_demo_epochs,
                         max_games=args.black_demo_max_games,
                         workers=args.black_demo_workers,
+                        scoresheets=black_demo_scoresheets,
+                        upsample_m14=args.black_demo_upsample_m14,
                     )
                     bc_path = checkpoint_dir / "ppo_bc.zip"
                     cloned.save(str(bc_path))
