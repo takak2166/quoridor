@@ -13,7 +13,7 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --black-demo-wins 0 \
   --black-demo-scoresheets artifacts/black_wins_vs_normal/black_win_vs_normal_M14.txt \
   --black-demo-upsample-m14 1 \
-  --black-demo-epochs 24 \
+  --black-demo-epochs 200 \
   --bc-only \
   --curriculum "" \
   --opponent normal \
