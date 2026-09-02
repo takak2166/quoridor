@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Behavior-clone saved Black-win scoresheets (vs Normal second) onto current Hard PPO.
+# Behavior-clone the sequential M(1,4) Black win vs Normal onto current Hard PPO.
+# Cloning the full 88-game first-move book pulls the opening off M(1,4) into
+# first-move walls; keep the Hard opening line only.
 set -euo pipefail
 cd /home/ubuntu/quoridor/backend
 source .venv/bin/activate
@@ -9,9 +11,9 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --resume ../models/finetune_black_imitation/model.zip \
   --white-demo-wins 0 \
   --black-demo-wins 0 \
-  --black-demo-scoresheets artifacts/black_wins_vs_normal \
-  --black-demo-upsample-m14 8 \
-  --black-demo-epochs 8 \
+  --black-demo-scoresheets artifacts/black_wins_vs_normal/black_win_vs_normal_M14.txt \
+  --black-demo-upsample-m14 1 \
+  --black-demo-epochs 24 \
   --bc-only \
   --curriculum "" \
   --opponent normal \
