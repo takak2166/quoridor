@@ -13,19 +13,21 @@ from pathlib import Path
 
 from app.infrastructure.rl.hunt_black_wins import (
     BLACK_KINDS,
+    WHITE_KINDS,
     HuntResult,
+    _select_fn,
     encode_prefix_action,
     format_numbered_scoresheet,
     format_prefix_spec,
     parse_scoresheet,
     play_opening_vs_normal,
 )
-from app.infrastructure.rl.white_demonstrations import _format_action, _node_limited_normal_policy
+from app.infrastructure.rl.white_demonstrations import _format_action
 from quoridor.domain.actions import Move
 from quoridor.domain.state import initial_state
 from quoridor.rules import apply_action, get_legal_actions
 
-Payload = tuple[tuple, int, str, str]
+Payload = tuple[tuple, int, str, str, str]
 
 # Horizontal walls that block White's (8,4)->(7,4) first step.
 FACE_WHITE_SPECS = (("H", 7, 3), ("H", 7, 4))
@@ -42,22 +44,33 @@ def _payload(
     specs: tuple,
     max_moves: int,
     black_kind: str,
+    white_kind: str,
     tag: str,
 ) -> Payload:
-    return (specs, max_moves, black_kind, tag)
+    return (specs, max_moves, black_kind, white_kind, tag)
 
 
-def _first_move_payloads(max_moves: int, pawns_only: bool, black_kind: str) -> list[Payload]:
+def _first_move_payloads(
+    max_moves: int, pawns_only: bool, black_kind: str, white_kind: str
+) -> list[Payload]:
     payloads: list[Payload] = []
     for action in _legal(initial_state(), pawns_only):
         spec = encode_prefix_action(action)
         payloads.append(
-            _payload((spec,), max_moves, black_kind, f"first:{format_prefix_spec(spec)}")
+            _payload(
+                (spec,),
+                max_moves,
+                black_kind,
+                white_kind,
+                f"first:{format_prefix_spec(spec)}",
+            )
         )
     return payloads
 
 
-def _after_face_wall_payloads(max_moves: int, pawns_only: bool, black_kind: str) -> list[Payload]:
+def _after_face_wall_payloads(
+    max_moves: int, pawns_only: bool, black_kind: str, white_kind: str
+) -> list[Payload]:
     """Black (1,4), White's Normal reply, then every Black second move."""
     black_fwd = next(
         action
@@ -65,7 +78,7 @@ def _after_face_wall_payloads(max_moves: int, pawns_only: bool, black_kind: str)
         if isinstance(action, Move) and action.to == (1, 4)
     )
     after_fwd = apply_action(initial_state(), black_fwd)
-    white_reply = _node_limited_normal_policy().select_move(after_fwd, "white")
+    white_reply = _select_fn(white_kind)(after_fwd, "white")
     after_white = apply_action(after_fwd, white_reply)
     replies = _legal(after_white, pawns_only)
     prefix_head = (encode_prefix_action(black_fwd), encode_prefix_action(white_reply))
@@ -81,19 +94,20 @@ def _after_face_wall_payloads(max_moves: int, pawns_only: bool, black_kind: str)
                 prefix_head + (spec,),
                 max_moves,
                 black_kind,
+                white_kind,
                 f"face-wall:{format_prefix_spec(spec)}",
             )
         )
     return payloads
 
 
-def _pawn_second_payloads(max_moves: int, black_kind: str) -> list[Payload]:
+def _pawn_second_payloads(max_moves: int, black_kind: str, white_kind: str) -> list[Payload]:
     """Every first pawn move, White's Normal reply, then every Black pawn second."""
-    white_policy = _node_limited_normal_policy()
+    white_select = _select_fn(white_kind)
     payloads: list[Payload] = []
     for first in _legal(initial_state(), pawns_only=True):
         after_first = apply_action(initial_state(), first)
-        white_reply = white_policy.select_move(after_first, "white")
+        white_reply = white_select(after_first, "white")
         after_white = apply_action(after_first, white_reply)
         head = (encode_prefix_action(first), encode_prefix_action(white_reply))
         for second in _legal(after_white, pawns_only=True):
@@ -103,6 +117,7 @@ def _pawn_second_payloads(max_moves: int, black_kind: str) -> list[Payload]:
                     head + (spec,),
                     max_moves,
                     black_kind,
+                    white_kind,
                     f"pawn-second:{format_prefix_spec(encode_prefix_action(first))}"
                     f"+{_format_action(white_reply)}+{format_prefix_spec(spec)}",
                 )
@@ -110,17 +125,23 @@ def _pawn_second_payloads(max_moves: int, black_kind: str) -> list[Payload]:
     return payloads
 
 
-def _face_white_payloads(max_moves: int, black_kind: str) -> list[Payload]:
+def _face_white_payloads(max_moves: int, black_kind: str, white_kind: str) -> list[Payload]:
     payloads: list[Payload] = []
     for spec in FACE_WHITE_SPECS:
         payloads.append(
-            _payload((spec,), max_moves, black_kind, f"face-white:{format_prefix_spec(spec)}")
+            _payload(
+                (spec,),
+                max_moves,
+                black_kind,
+                white_kind,
+                f"face-white:{format_prefix_spec(spec)}",
+            )
         )
     return payloads
 
 
-def _asymmetric_payloads(max_moves: int, black_kind: str) -> list[Payload]:
-    return [_payload((), max_moves, black_kind, f"asymmetric:{black_kind}")]
+def _asymmetric_payloads(max_moves: int, black_kind: str, white_kind: str) -> list[Payload]:
+    return [_payload((), max_moves, black_kind, white_kind, f"asymmetric:{black_kind}")]
 
 
 def _save_win(out_dir: Path, result: HuntResult, index: int) -> Path:
@@ -154,7 +175,9 @@ def main() -> int:
         default="first",
     )
     parser.add_argument("--black-kind", choices=BLACK_KINDS, default="normal")
+    parser.add_argument("--white-kind", choices=WHITE_KINDS, default="node-limited")
     parser.add_argument("--games", type=int, default=0, help="Cap (0 = all openings)")
+    parser.add_argument("--repeats", type=int, default=1, help="Replay each opening (400ms jitter)")
     parser.add_argument("--workers", type=int, default=min(16, os.cpu_count() or 8))
     parser.add_argument("--max-moves", type=int, default=200)
     parser.add_argument("--pawns-only", action="store_true")
@@ -166,22 +189,42 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    if args.mode == "first":
-        payloads = _first_move_payloads(args.max_moves, args.pawns_only, args.black_kind)
-    elif args.mode == "face-wall":
-        payloads = _after_face_wall_payloads(args.max_moves, args.pawns_only, args.black_kind)
-    elif args.mode == "pawn-second":
-        payloads = _pawn_second_payloads(args.max_moves, args.black_kind)
-    elif args.mode == "face-white":
-        payloads = _face_white_payloads(args.max_moves, args.black_kind)
-    else:
-        payloads = _asymmetric_payloads(args.max_moves, args.black_kind)
+    if args.white_kind == "factory" and args.workers > 1:
+        print(
+            f"factory 400ms Normal: forcing workers=1 (requested {args.workers}) "
+            "to avoid time-budget starvation",
+            flush=True,
+        )
+        args.workers = 1
 
+    if args.mode == "first":
+        payloads = _first_move_payloads(
+            args.max_moves, args.pawns_only, args.black_kind, args.white_kind
+        )
+    elif args.mode == "face-wall":
+        payloads = _after_face_wall_payloads(
+            args.max_moves, args.pawns_only, args.black_kind, args.white_kind
+        )
+    elif args.mode == "pawn-second":
+        payloads = _pawn_second_payloads(args.max_moves, args.black_kind, args.white_kind)
+    elif args.mode == "face-white":
+        payloads = _face_white_payloads(args.max_moves, args.black_kind, args.white_kind)
+    else:
+        payloads = _asymmetric_payloads(args.max_moves, args.black_kind, args.white_kind)
+
+    if args.repeats > 1:
+        repeated: list[Payload] = []
+        for spec, max_moves, black_kind, white_kind, tag in payloads:
+            for repeat_i in range(args.repeats):
+                repeated.append(
+                    (spec, max_moves, black_kind, white_kind, f"{tag}#r{repeat_i}")
+                )
+        payloads = repeated
     if args.games > 0:
         payloads = payloads[: args.games]
     print(
-        f"mode={args.mode} black_kind={args.black_kind} openings={len(payloads)} "
-        f"workers={args.workers}",
+        f"mode={args.mode} black_kind={args.black_kind} white_kind={args.white_kind} "
+        f"openings={len(payloads)} workers={args.workers}",
         flush=True,
     )
 

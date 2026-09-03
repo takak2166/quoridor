@@ -1,4 +1,8 @@
-"""Hunt first-player wins against node-limited Normal (second)."""
+"""Hunt first-player wins against Normal (second).
+
+White can be node-limited (search completes) or factory (live 400ms Normal).
+Factory hunts must stay sequential: parallel 400ms workers starve and invent wins.
+"""
 
 from __future__ import annotations
 
@@ -18,7 +22,8 @@ from quoridor.rules import get_legal_actions
 
 PrefixSpec = tuple[str, int, int]
 
-BLACK_KINDS = ("normal", "greedy", "deep")
+BLACK_KINDS = ("normal", "greedy", "deep", "expert")
+WHITE_KINDS = ("node-limited", "factory")
 
 _SCORESHEET_TOKEN = re.compile(r"([MHV])\((\d+),\s*(\d+)\)")
 
@@ -132,16 +137,37 @@ def _deep_black_policy():
     )
 
 
-def _black_action_fn(kind: str):
-    if kind not in BLACK_KINDS:
-        raise ValueError(f"unknown black kind {kind!r}")
+def _factory_normal_policy():
+    from app.infrastructure.ai.factory import ai_for_difficulty
+
+    return ai_for_difficulty("normal")
+
+
+def _expert_black_policy():
+    from app.config import settings
+    from app.infrastructure.ai.factory import ExpertMCTSPolicy
+
+    return ExpertMCTSPolicy(model_path=settings.model_expert, budget_ms=450)
+
+
+def _select_fn(kind: str):
     if kind == "greedy":
         return lambda state, color: greedy_race_action(state, color)
     if kind == "deep":
-        policy = _deep_black_policy()
-        return policy.select_move
-    policy = _node_limited_normal_policy()
-    return policy.select_move
+        return _deep_black_policy().select_move
+    if kind == "expert":
+        return _expert_black_policy().select_move
+    if kind == "factory":
+        return _factory_normal_policy().select_move
+    if kind in ("normal", "node-limited"):
+        return _node_limited_normal_policy().select_move
+    raise ValueError(f"unknown policy kind {kind!r}")
+
+
+def _black_action_fn(kind: str):
+    if kind not in BLACK_KINDS:
+        raise ValueError(f"unknown black kind {kind!r}")
+    return _select_fn(kind)
 
 
 def _play_specs_then_policies(
@@ -150,9 +176,13 @@ def _play_specs_then_policies(
     max_moves: int,
     black_kind: str,
     tag: str,
+    white_kind: str = "node-limited",
 ) -> HuntResult:
-    white_policy = _node_limited_normal_policy()
-    black_select = _black_action_fn(black_kind)
+    if white_kind not in WHITE_KINDS:
+        raise ValueError(f"unknown white kind {white_kind!r}")
+    white_select = _select_fn(white_kind)
+    # ``normal`` Black mirrors White so both sides are the same Normal flavor.
+    black_select = white_select if black_kind == "normal" else _select_fn(black_kind)
     game = Game.from_initial()
     labels: list[str] = []
 
@@ -178,7 +208,7 @@ def _play_specs_then_policies(
         if color == "black":
             action = black_select(game.state, color)
         else:
-            action = white_policy.select_move(game.state, color)
+            action = white_select(game.state, color)
         labels.append(_format_action(action))
         game.play(action)
     return _result_from_game(game, labels, tag)
@@ -198,14 +228,19 @@ def _result_from_game(game: Game, labels: list[str], tag: str) -> HuntResult:
 
 
 def play_opening_vs_normal(
-    payload: tuple[tuple[PrefixSpec, ...], int, str, str],
+    payload: tuple,
 ) -> HuntResult:
-    """Picklable worker: forced prefix, then Black policy vs node-limited Normal."""
-    specs, max_moves, black_kind, tag = payload
+    """Picklable worker: forced prefix, then Black policy vs Normal (White)."""
+    if len(payload) == 4:
+        specs, max_moves, black_kind, tag = payload
+        white_kind = "node-limited"
+    else:
+        specs, max_moves, black_kind, white_kind, tag = payload
     return _play_specs_then_policies(
         specs,
         max_moves=max_moves,
         black_kind=black_kind,
+        white_kind=white_kind,
         tag=tag,
     )
 

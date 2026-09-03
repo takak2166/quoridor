@@ -32,6 +32,22 @@ def test_illegal_prefix_is_reported_without_search() -> None:
     assert result.plies == 0
 
 
+def test_factory_five_tuple_illegal_prefix_skips_search() -> None:
+    result = play_opening_vs_normal(((("M", 8, 8),), 8, "normal", "factory", "bad"))
+    assert result.winner == "illegal"
+    assert result.plies == 0
+
+
+def test_factory_normal_policy_is_live_400ms() -> None:
+    from app.infrastructure.ai.minimax import NormalMinimaxPolicy
+    from app.infrastructure.rl.hunt_black_wins import _factory_normal_policy
+
+    policy = _factory_normal_policy()
+    assert isinstance(policy, NormalMinimaxPolicy)
+    assert policy.config.time_budget_ms == 400
+    assert policy.config.max_nodes == 1200
+
+
 def test_replay_recorded_black_win_vs_normal() -> None:
     from pathlib import Path
 
