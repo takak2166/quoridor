@@ -1,0 +1,18 @@
+Black wins vs factory Normal that start with a pawn move (M).
+Hunt: sequential workers=1, --mode pawn-third, stop at 10 Black wins
+(24 games played, 10 black / 14 white before the cap; 30 pawn-third prefixes total).
+Legal pawn firsts are only M(1, 4), M(0, 3), M(0, 5). Distinct patterns are
+forced Black 2nd/3rd pawn destinations after White's factory replies.
+
+count=10
+
+M(1, 4),H(1,3),M(1, 3),M(8, 3),M(1, 4)	plies=65	final_black=(8, 1)	final_white=(6, 4)	black_win_vs_400ms_pawn_M14_M13_M14.txt
+M(1, 4),H(1,3),M(1, 5),M(8, 5),M(2, 5)	plies=61	final_black=(8, 1)	final_white=(6, 4)	black_win_vs_400ms_pawn_M14_M15_M25.txt
+M(1, 4),H(1,3),M(1, 5),M(8, 5),M(1, 4)	plies=65	final_black=(8, 1)	final_white=(6, 4)	black_win_vs_400ms_pawn_M14_M15_M14.txt
+M(1, 4),H(1,3),M(1, 5),M(8, 5),M(1, 6)	plies=77	final_black=(8, 7)	final_white=(2, 2)	black_win_vs_400ms_pawn_M14_M15_M16.txt
+M(0, 3),M(7, 4),M(1, 3),M(6, 4),M(2, 3)	plies=97	final_black=(8, 7)	final_white=(2, 8)	black_win_vs_400ms_pawn_M03_M13_M23.txt
+M(0, 3),M(7, 4),M(1, 3),M(6, 4),M(1, 4)	plies=75	final_black=(8, 1)	final_white=(1, 0)	black_win_vs_400ms_pawn_M03_M13_M14.txt
+M(0, 3),M(7, 4),M(0, 2),M(6, 4),M(0, 1)	plies=63	final_black=(8, 0)	final_white=(3, 7)	black_win_vs_400ms_pawn_M03_M02_M01.txt
+M(0, 3),M(7, 4),M(0, 4),M(6, 4),M(0, 5)	plies=71	final_black=(8, 5)	final_white=(2, 3)	black_win_vs_400ms_pawn_M03_M04_M05.txt
+M(0, 5),M(7, 4),M(1, 5),M(6, 4),M(0, 5)	plies=71	final_black=(8, 5)	final_white=(2, 3)	black_win_vs_400ms_pawn_M05_M15_M05.txt
+M(0, 5),M(7, 4),M(1, 5),M(6, 4),M(1, 6)	plies=75	final_black=(8, 1)	final_white=(1, 0)	black_win_vs_400ms_pawn_M05_M15_M16.txt

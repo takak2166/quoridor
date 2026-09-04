@@ -93,3 +93,26 @@ def test_replay_ten_black_wins_vs_400ms_factory() -> None:
         assert result.plies == len(specs), path.name
     assert ("M", 1, 4) in firsts
     assert len(firsts) == 10
+
+
+def test_replay_ten_pawn_first_black_wins_vs_400ms() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, replay_scoresheet
+
+    fixtures = sorted(
+        (Path(__file__).parent / "fixtures" / "black_wins_vs_400ms_pawn").glob("*.txt")
+    )
+    assert len(fixtures) == 10
+    prefixes: set[tuple] = set()
+    for path in fixtures:
+        text = path.read_text(encoding="utf-8")
+        specs = parse_scoresheet(text)
+        assert specs, path.name
+        assert specs[0][0] == "M", path.name
+        prefixes.add(tuple(specs[:5]))
+        result = replay_scoresheet(text)
+        assert result.winner == "black", path.name
+        assert result.plies == len(specs), path.name
+    assert len(prefixes) == 10
+    assert any(p[0] == ("M", 1, 4) for p in prefixes)
