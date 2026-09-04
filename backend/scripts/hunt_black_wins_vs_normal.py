@@ -183,6 +183,12 @@ def main() -> int:
     parser.add_argument("--pawns-only", action="store_true")
     parser.add_argument("--stop-on-win", action="store_true")
     parser.add_argument(
+        "--max-wins",
+        type=int,
+        default=0,
+        help="Stop after this many Black wins (0 = no cap)",
+    )
+    parser.add_argument(
         "--out-dir",
         type=Path,
         default=Path("artifacts/black_wins_vs_normal"),
@@ -233,7 +239,8 @@ def main() -> int:
     workers = max(1, min(args.workers, len(payloads)))
     ctx = mp.get_context("spawn")
     with ctx.Pool(processes=workers) as pool:
-        for result in pool.imap_unordered(play_opening_vs_normal, payloads):
+        iterator = pool.imap if args.workers == 1 else pool.imap_unordered
+        for result in iterator(play_opening_vs_normal, payloads):
             label = result.winner if result.winner is not None else "unfinished"
             counts[label] += 1
             print(
@@ -244,7 +251,7 @@ def main() -> int:
                 black_wins += 1
                 saved = _save_win(args.out_dir, result, black_wins)
                 print(f"SAVED {saved} scoresheet={result.scoresheet}", flush=True)
-                if args.stop_on_win:
+                if args.stop_on_win or (args.max_wins > 0 and black_wins >= args.max_wins):
                     pool.terminate()
                     break
 
