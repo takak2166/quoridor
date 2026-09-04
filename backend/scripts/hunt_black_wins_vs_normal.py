@@ -125,6 +125,44 @@ def _pawn_second_payloads(max_moves: int, black_kind: str, white_kind: str) -> l
     return payloads
 
 
+def _pawn_third_payloads(max_moves: int, black_kind: str, white_kind: str) -> list[Payload]:
+    """Pawn first, White reply, pawn second, White reply, then every Black pawn third."""
+    white_select = _select_fn(white_kind)
+    payloads: list[Payload] = []
+    for first in _legal(initial_state(), pawns_only=True):
+        after_first = apply_action(initial_state(), first)
+        white1 = white_select(after_first, "white")
+        after_white1 = apply_action(after_first, white1)
+        for second in _legal(after_white1, pawns_only=True):
+            after_second = apply_action(after_white1, second)
+            white2 = white_select(after_second, "white")
+            after_white2 = apply_action(after_second, white2)
+            head = (
+                encode_prefix_action(first),
+                encode_prefix_action(white1),
+                encode_prefix_action(second),
+                encode_prefix_action(white2),
+            )
+            for third in _legal(after_white2, pawns_only=True):
+                spec = encode_prefix_action(third)
+                payloads.append(
+                    _payload(
+                        head + (spec,),
+                        max_moves,
+                        black_kind,
+                        white_kind,
+                        "pawn-third:"
+                        f"{format_prefix_spec(head[0])}"
+                        f"+{_format_action(white1)}"
+                        f"+{format_prefix_spec(head[2])}"
+                        f"+{_format_action(white2)}"
+                        f"+{format_prefix_spec(spec)}",
+                    )
+                )
+    print(f"pawn-third openings={len(payloads)}", flush=True)
+    return payloads
+
+
 def _face_white_payloads(max_moves: int, black_kind: str, white_kind: str) -> list[Payload]:
     payloads: list[Payload] = []
     for spec in FACE_WHITE_SPECS:
@@ -171,7 +209,7 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=["first", "face-wall", "pawn-second", "face-white", "asymmetric"],
+        choices=["first", "face-wall", "pawn-second", "pawn-third", "face-white", "asymmetric"],
         default="first",
     )
     parser.add_argument("--black-kind", choices=BLACK_KINDS, default="normal")
@@ -213,6 +251,8 @@ def main() -> int:
         )
     elif args.mode == "pawn-second":
         payloads = _pawn_second_payloads(args.max_moves, args.black_kind, args.white_kind)
+    elif args.mode == "pawn-third":
+        payloads = _pawn_third_payloads(args.max_moves, args.black_kind, args.white_kind)
     elif args.mode == "face-white":
         payloads = _face_white_payloads(args.max_moves, args.black_kind, args.white_kind)
     else:
