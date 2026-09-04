@@ -73,3 +73,23 @@ def test_m14_scoresheet_is_the_hard_opening_line() -> None:
     assert specs[1] == ("H", 1, 3)
     assert specs[2] == ("M", 1, 5)
     assert specs[3] == ("M", 8, 5)
+
+
+def test_replay_ten_black_wins_vs_400ms_factory() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, replay_scoresheet
+
+    fixtures = sorted((Path(__file__).parent / "fixtures" / "black_wins_vs_400ms").glob("*.txt"))
+    assert len(fixtures) == 10
+    firsts: set[tuple] = set()
+    for path in fixtures:
+        text = path.read_text(encoding="utf-8")
+        specs = parse_scoresheet(text)
+        assert specs, path.name
+        firsts.add(specs[0])
+        result = replay_scoresheet(text)
+        assert result.winner == "black", path.name
+        assert result.plies == len(specs), path.name
+    assert ("M", 1, 4) in firsts
+    assert len(firsts) == 10
