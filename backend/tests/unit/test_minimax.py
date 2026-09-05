@@ -95,7 +95,7 @@ def test_prefers_wall_when_behind_in_race() -> None:
     assert not isinstance(action, Move)
 
 
-def test_tie_break_can_pick_wall_at_random(monkeypatch) -> None:
+def test_tie_break_prefers_shorter_own_path() -> None:
     from app.infrastructure.ai.evaluation import EASY_EVAL_CONFIG
     from app.infrastructure.ai.minimax import MinimaxConfig, MinimaxEngine
     from quoridor.domain.actions import Move, WallSlot
@@ -103,10 +103,6 @@ def test_tie_break_can_pick_wall_at_random(monkeypatch) -> None:
     engine = MinimaxEngine(MinimaxConfig(), EASY_EVAL_CONFIG)
     move = Move(direction="up", to=(1, 4))
     wall = WallSlot(orientation="horizontal", row=7, col=3)
-    monkeypatch.setattr(
-        "app.infrastructure.ai.minimax.random.choice",
-        lambda options: wall,
-    )
     chosen = engine._choose_move_or_wall(
         initial_state(),
         "black",
@@ -115,7 +111,7 @@ def test_tie_break_can_pick_wall_at_random(monkeypatch) -> None:
         wall,
         0.5,
     )
-    assert chosen == wall
+    assert chosen == move
 
 
 def test_minimax_prefers_shorter_path() -> None:
@@ -194,4 +190,84 @@ def test_very_easy_never_plays_wall() -> None:
         action = policy.select_move(state, state.current_player)
         assert isinstance(action, Move)
         assert not isinstance(action, WallSlot)
+
+
+def _node_limited_normal():
+    from app.config import settings
+    from app.infrastructure.ai.minimax import MinimaxConfig, NormalMinimaxPolicy
+
+    return NormalMinimaxPolicy(
+        config=MinimaxConfig(
+            time_budget_ms=60_000,
+            max_nodes=settings.minimax_max_nodes_normal,
+            max_wall_candidates=10,
+            two_phase_search=True,
+            primary_depth=settings.minimax_depth_normal,
+            fallback_depth=max(2, settings.minimax_depth_normal - 2),
+        )
+    )
+
+
+def test_normal_shortens_path_instead_of_oscillating_on_back_rank() -> None:
+    """Regression: shared reachability cache must not make Normal retreat from (8,5)."""
+    from dataclasses import replace
+
+    from quoridor.domain.actions import Move
+    from tests.unit.fixtures.plan_fixtures import build_state
+
+    state = replace(
+        build_state(
+            white=(8, 5),
+            black=(3, 5),
+            current="white",
+            h=frozenset([(1, 3), (3, 2), (3, 4), (3, 6), (4, 0), (4, 3), (6, 4), (7, 3), (7, 5)]),
+            v=frozenset([(2, 5), (3, 0), (3, 3), (3, 7), (7, 6)]),
+        ),
+        white_walls_remaining=0,
+        black_walls_remaining=6,
+    )
+    chosen = _node_limited_normal().select_move(state, "white")
+    assert isinstance(chosen, Move)
+    assert chosen.to == (8, 4)
+
+
+def test_normal_prefers_shorter_path_when_eval_hits_the_ceiling() -> None:
+    """Winning-looking lines all clamp to +1; do not keep the first legal retreat."""
+    from dataclasses import replace
+
+    from quoridor.domain.actions import Move
+    from tests.unit.fixtures.plan_fixtures import build_state
+
+    state = replace(
+        build_state(
+            white=(4, 3),
+            black=(2, 1),
+            current="white",
+            h=frozenset(
+                [
+                    (1, 1),
+                    (1, 3),
+                    (1, 5),
+                    (1, 7),
+                    (2, 0),
+                    (2, 2),
+                    (2, 4),
+                    (2, 6),
+                    (3, 2),
+                    (6, 1),
+                    (6, 4),
+                    (7, 1),
+                    (7, 3),
+                    (7, 5),
+                    (7, 7),
+                ]
+            ),
+            v=frozenset([(0, 5), (3, 1), (4, 2), (6, 0)]),
+        ),
+        white_walls_remaining=1,
+        black_walls_remaining=0,
+    )
+    chosen = _node_limited_normal().select_move(state, "white")
+    assert isinstance(chosen, Move)
+    assert chosen.to == (4, 4)
 

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import math
-import random
 import time
 from dataclasses import dataclass
 
@@ -18,7 +17,7 @@ from app.infrastructure.ai.search_actions import (
 from quoridor.domain.actions import Action, Move, encode
 from quoridor.domain.state import Color, QuoridorState, position_key
 from quoridor.pathfinding import SimpleDistanceCache, distances
-from quoridor.rules import apply_action, get_legal_actions
+from quoridor.rules import apply_action, check_winner, get_legal_actions
 
 
 @dataclass(frozen=True)
@@ -127,7 +126,8 @@ class MinimaxEngine:
         if not actions:
             return None, -math.inf, self._aborted
         best_score = -math.inf
-        best_action = actions[0]
+        best_action: Action | None = None
+        best_child: QuoridorState | None = None
         alpha, beta = -math.inf, math.inf
         root_path = None
         if self._anti_loop_enabled:
@@ -135,7 +135,7 @@ class MinimaxEngine:
         for action in actions:
             if self._timed_out() or self._visited >= self.config.max_nodes:
                 self._aborted = True
-                return best_action, best_score, True
+                return best_action or actions[0], best_score, True
             child = apply_action(state, action)
             score = self._minimax(
                 child,
@@ -147,11 +147,29 @@ class MinimaxEngine:
                 path_counts=root_path,
                 plies_from_root=1,
             )
-            if score > best_score:
+            better = score > best_score or (
+                best_child is not None
+                and score == best_score
+                and self._progress_key(child, color) < self._progress_key(best_child, color)
+            )
+            if better:
                 best_score = score
                 best_action = action
+                best_child = child
             alpha = max(alpha, score)
         return best_action, best_score, self._aborted
+
+    def _progress_key(self, state: QuoridorState, color: Color) -> tuple[int, int, int]:
+        """Tie-break when eval saturates at ±1: prefer a win, then a shorter own path."""
+        winner = check_winner(state)
+        if winner == color:
+            return (0, 0, 0)
+        if winner is not None:
+            return (3, 0, 0)
+        mine, enemy = self._path_distances(state, color)
+        if mine is None:
+            return (2, 99, 0)
+        return (1, mine, -(enemy or 0))
 
     def _path_distances(self, state: QuoridorState, color: Color) -> tuple[int | None, int | None]:
         dw, db = distances(state, self._cache)
@@ -185,7 +203,11 @@ class MinimaxEngine:
             return wall_action
         if move_score > wall_score:
             return move_action
-        return random.choice([move_action, wall_action])
+        move_child = apply_action(state, move_action)
+        wall_child = apply_action(state, wall_action)
+        if self._progress_key(move_child, color) <= self._progress_key(wall_child, color):
+            return move_action
+        return wall_action
 
     def _needs_lane_match_sidestep(self, state: QuoridorState, color: Color) -> bool:
         walls_used = 10 - (
@@ -357,8 +379,9 @@ class EasyMinimaxPolicy:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for a in legal:
-            prior[encode(a)] = 1.0
+            prior[encode(a, from_pos=from_pos)] = 1.0
         if prior.sum() > 0:
             prior /= prior.sum()
         return prior
@@ -394,8 +417,9 @@ class VeryEasyMinimaxPolicy:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for a in legal:
-            prior[encode(a)] = 1.0
+            prior[encode(a, from_pos=from_pos)] = 1.0
         if prior.sum() > 0:
             prior /= prior.sum()
         return prior
@@ -465,8 +489,9 @@ class NormalMinimaxPolicy:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for a in legal:
-            prior[encode(a)] = 1.0
+            prior[encode(a, from_pos=from_pos)] = 1.0
         if prior.sum() > 0:
             prior /= prior.sum()
         return prior

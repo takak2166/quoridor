@@ -14,8 +14,9 @@ class FakeAi:
 
         legal = get_legal_actions(state)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        from_pos = state.pawn(color)
         for action in legal:
-            prior[encode(action)] = 1.0
+            prior[encode(action, from_pos=from_pos)] = 1.0
         prior /= prior.sum()
         return prior
 
@@ -47,3 +48,18 @@ def test_mcts_budget_stops_within_wall_clock() -> None:
 
     assert clock["t"] <= 0.5
     assert len(metrics_store.mcts_sim_count) == before + 1
+
+
+def test_mcts_expands_opponent_nodes_with_side_to_move_prior() -> None:
+    """Priors must use the player to move; root-color encoding crashes on White moves."""
+    ai = FakeAi()
+    state = initial_state()
+    legal = get_legal_actions(state)[:2]
+    mcts_search(
+        state,
+        "black",
+        prior_fn=ai.action_prior,
+        value_fn=ai.value,
+        legal_actions=legal,
+        budget_ms=80,
+    )

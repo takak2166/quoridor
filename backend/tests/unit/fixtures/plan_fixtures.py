@@ -56,12 +56,14 @@ JUMP_CASES = [
     },
     {
         "id": "J.4-BLOCK",
+        # Both lateral sides of the opponent are walled off (V left + V right),
+        # so neither diagonal jump is legal after the rear wall blocks the straight jump.
         "state": build_state(
             white=(5, 4),
             black=(4, 4),
             current="white",
             h=frozenset({(3, 4)}),
-            v=frozenset({(4, 4)}),
+            v=frozenset({(4, 3), (4, 4)}),
         ),
         "direction": "up",
         "expected_destinations": frozenset(),
@@ -70,7 +72,7 @@ JUMP_CASES = [
         "id": "J.5-EDGE",
         "state": build_state(white=(5, 0), black=(4, 0), current="white"),
         "direction": "up",
-        "expected_destinations": frozenset({(4, 1)}),
+        "expected_destinations": frozenset({(3, 0)}),
     },
     {
         "id": "J.6-APPROACH",
@@ -211,6 +213,50 @@ PF_CASES = [
         "expected_distance": 5,
     },
 ]
+
+
+def seed3_wall_separated_choke() -> QuoridorState:
+    """Training smoke seed=3 after easy sits on the eastern gate.
+
+    White (3, 4) and black (3, 5) are Manhattan-adjacent, but vertical wall
+    (2, 4) sits between them, so a jump is illegal. Black occupies the only
+    open corridor to the east. Evaluation must still find a path: a pawn is
+    not a wall.
+    """
+    return build_state(
+        white=(3, 4),
+        black=(3, 5),
+        current="white",
+        h=frozenset(
+            {
+                (0, 2),
+                (0, 4),
+                (1, 0),
+                (2, 1),
+                (2, 3),
+                (2, 6),
+                (4, 0),
+                (4, 2),
+                (4, 6),
+                (5, 4),
+                (5, 6),
+                (6, 6),
+            }
+        ),
+        v=frozenset(
+            {
+                (0, 1),
+                (1, 5),
+                (2, 2),
+                (2, 4),
+                (4, 3),
+                (4, 4),
+                (4, 5),
+                (6, 7),
+            }
+        ),
+    )
+
 
 WALL_STEP_CASES = [
     {
