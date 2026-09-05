@@ -18,8 +18,8 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --opponent normal \
   --no-opponent-mix \
   --timesteps 102400 \
-  --n-envs 2 \
-  --vec-env dummy \
+  --n-envs 8 \
+  --vec-env subproc \
   --agent-white-prob 0.5 \
   --potential-scale 8 \
   --opening-wall-free-plies 2 \
