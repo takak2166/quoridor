@@ -160,3 +160,20 @@ def test_load_black_win_transitions_missing_path() -> None:
 
     with pytest.raises(FileNotFoundError, match="black-win scoresheets"):
         load_black_win_transitions(Path("/no/such/scoresheets"))
+
+
+def test_load_ten_pawn_first_400ms_scoresheets() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.white_demonstrations import load_black_win_transitions
+    from quoridor.domain.actions import FORWARD_STEP_INDEX
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "black_wins_vs_400ms_pawn"
+    loaded = load_black_win_transitions(fixture_dir, upsample_m14=1)
+    assert len(list(fixture_dir.glob("*.txt"))) == 10
+    assert len(loaded) == 365
+    assert all(item.obs.shape == (135,) for item in loaded)
+    assert all(item.mask.any() for item in loaded)
+    assert all(item.mask[item.action] for item in loaded)
+    assert any(item.action == FORWARD_STEP_INDEX for item in loaded)
+    assert len(load_black_win_transitions(fixture_dir, upsample_m14=2)) == 501
