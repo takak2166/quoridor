@@ -86,6 +86,7 @@ class QuoridorEnv(gym.Env):
         revisit_decay: float = DEFAULT_REVISIT_DECAY,
         revisit_max_age: int = DEFAULT_REVISIT_MAX_AGE,
         repeat_pawn_max_visits: int = 1,
+        loop_filter_plies: int = 36,
         agent_white_prob: float = 0.5,
         imitation_bonus: float = 0.0,
     ) -> None:
@@ -107,6 +108,7 @@ class QuoridorEnv(gym.Env):
         self.revisit_decay = revisit_decay
         self.revisit_max_age = max(0, revisit_max_age)
         self.repeat_pawn_max_visits = max(0, repeat_pawn_max_visits)
+        self.loop_filter_plies = max(0, loop_filter_plies)
         if not 0.0 <= agent_white_prob <= 1.0:
             raise ValueError(f"agent_white_prob must be in [0, 1], got {agent_white_prob}")
         self.agent_white_prob = float(agent_white_prob)
@@ -375,11 +377,12 @@ class QuoridorEnv(gym.Env):
         )
         if self._agent_plies_played < self.opening_wall_free_plies:
             legal = [action for action in legal if isinstance(action, Move)]
-        legal = filter_repeat_pawn_cells(
-            legal,
-            self._agent_path,
-            max_visits=self.repeat_pawn_max_visits,
-        )
+        if self._agent_plies_played >= self.loop_filter_plies:
+            legal = filter_repeat_pawn_cells(
+                legal,
+                self._agent_path,
+                max_visits=self.repeat_pawn_max_visits,
+            )
         return legal_action_mask_agent_frame(
             legal,
             self.agent_color,

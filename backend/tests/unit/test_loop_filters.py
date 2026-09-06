@@ -66,6 +66,7 @@ def test_env_mask_blocks_third_visit_to_same_cell() -> None:
         opening_wall_free_plies=0,
         max_wall_candidates=None,
         repeat_pawn_max_visits=1,
+        loop_filter_plies=0,
     )
     env.reset(options={"agent_color": "black"})
     env._state = QuoridorState(
@@ -118,7 +119,7 @@ def test_ppo_policy_excludes_repeated_action_from_same_position() -> None:
     policy = PPOPolicy(model_path="/nonexistent/model.zip")
     policy._last_action_by_pos[("black", position_key(state))] = previous
     policy._pawn_path["black"] = [(0, 4), (1, 4), (2, 4)]
-    policy._select_count["black"] = 2
+    policy._select_count["black"] = 36
     filtered = policy._apply_loop_filters(state, "black", [previous, other])
     assert previous not in filtered
     assert other in filtered
@@ -139,3 +140,35 @@ def test_ppo_policy_breaks_stall_with_greedy_race() -> None:
     policy._pawn_path["black"] = [(0, 4)]
     chosen = policy._break_stall(state, "black", [wall, race], wall)
     assert chosen == race
+
+
+def test_ppo_policy_skips_loop_filters_during_opening_book() -> None:
+    from app.infrastructure.ai.ppo_policy import PPOPolicy
+    from quoridor.domain.state import QuoridorState, empty_walls, position_key
+
+    state = QuoridorState(
+        white=(8, 4),
+        black=(2, 4),
+        white_walls_remaining=10,
+        black_walls_remaining=10,
+        horizontal_walls=empty_walls(),
+        vertical_walls=empty_walls(),
+        current_player="black",
+    )
+    previous = next(
+        action
+        for action in get_legal_actions(state)
+        if isinstance(action, Move) and action.to == (3, 4)
+    )
+    other = next(
+        action
+        for action in get_legal_actions(state)
+        if isinstance(action, Move) and action.to == (2, 5)
+    )
+    policy = PPOPolicy(model_path="/nonexistent/model.zip")
+    policy._last_action_by_pos[("black", position_key(state))] = previous
+    policy._pawn_path["black"] = [(0, 4), (1, 4), (2, 4)]
+    policy._select_count["black"] = 10
+    filtered = policy._apply_loop_filters(state, "black", [previous, other])
+    assert previous in filtered
+    assert other in filtered

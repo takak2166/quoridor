@@ -190,6 +190,8 @@ class PPOPolicy:
         if estimated_agent_plies(state, color) == 0:
             self._reset_color_loop_state(color, state.pawn(color))
         path = self._pawn_path.setdefault(color, [state.pawn(color)])
+        if self._select_count.get(color, 0) < settings.ppo_loop_filter_plies:
+            return legal
         legal = filter_repeat_pawn_cells(
             legal,
             path,
