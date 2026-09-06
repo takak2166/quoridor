@@ -139,6 +139,8 @@ def load_black_win_transitions(
     source: str | Path,
     *,
     upsample_m14: int = 1,
+    upsample_stem: str | None = None,
+    upsample_heavy: int = 1,
 ) -> list[DemoTransition]:
     """Load unique Black-win scoresheets from a file or directory of ``*.txt``."""
     from app.infrastructure.rl.hunt_black_wins import parse_scoresheet
@@ -154,7 +156,9 @@ def load_black_win_transitions(
     seen: set[tuple] = set()
     collected: list[DemoTransition] = []
     m14: list[DemoTransition] = []
+    heavy: list[DemoTransition] = []
     games = 0
+    stem_key = (upsample_stem or "").strip()
     for file in files:
         text = file.read_text(encoding="utf-8")
         if "scoresheet=" not in text:
@@ -172,17 +176,25 @@ def load_black_win_transitions(
         games += 1
         if specs[0] == ("M", 1, 4):
             m14.extend(transitions)
+        if stem_key and stem_key in file.stem:
+            heavy.extend(transitions)
 
     extra = max(0, int(upsample_m14) - 1)
     if m14 and extra:
         collected.extend(m14 * extra)
+    extra_heavy = max(0, int(upsample_heavy) - 1)
+    if heavy and extra_heavy:
+        collected.extend(heavy * extra_heavy)
 
     logger.info(
-        "Black-win scoresheets: unique_games=%d transitions=%d m14=%d upsample=%d from %s",
+        "Black-win scoresheets: unique_games=%d transitions=%d m14=%d "
+        "upsample=%d heavy_stem=%s heavy=%d from %s",
         games,
         len(collected),
         len(m14),
         max(1, int(upsample_m14)),
+        stem_key or "-",
+        max(1, int(upsample_heavy)),
         path,
     )
     return collected

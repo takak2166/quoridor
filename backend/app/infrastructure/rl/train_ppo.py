@@ -574,10 +574,17 @@ def _clone_black_wins_vs_normal(
     workers: int = 1,
     scoresheets: str | None = None,
     upsample_m14: int = 1,
+    upsample_stem: str | None = None,
+    upsample_heavy: int = 1,
 ) -> None:
     demos = []
     if scoresheets:
-        demos = load_black_win_transitions(scoresheets, upsample_m14=upsample_m14)
+        demos = load_black_win_transitions(
+            scoresheets,
+            upsample_m14=upsample_m14,
+            upsample_stem=upsample_stem,
+            upsample_heavy=upsample_heavy,
+        )
         if not demos:
             raise SystemExit(f"Black-win BC failed: no first-player wins in {scoresheets}")
     elif demo_wins > 0:
@@ -746,6 +753,18 @@ def main() -> None:
         help="Repeat the M(1,4) Hard-opening win this many times in the BC set",
     )
     parser.add_argument(
+        "--black-demo-upsample-stem",
+        type=str,
+        default=None,
+        help="Filename stem to overweight (e.g. M14_M15_M25)",
+    )
+    parser.add_argument(
+        "--black-demo-upsample-heavy",
+        type=int,
+        default=1,
+        help="Repeat scoresheets matching --black-demo-upsample-stem this many times",
+    )
+    parser.add_argument(
         "--bc-only",
         action="store_true",
         help="Save after behavior cloning and exit (skip PPO)",
@@ -897,6 +916,8 @@ def main() -> None:
                         workers=args.black_demo_workers,
                         scoresheets=black_demo_scoresheets,
                         upsample_m14=args.black_demo_upsample_m14,
+                        upsample_stem=args.black_demo_upsample_stem,
+                        upsample_heavy=args.black_demo_upsample_heavy,
                     )
                     bc_path = checkpoint_dir / "ppo_bc.zip"
                     cloned.save(str(bc_path))

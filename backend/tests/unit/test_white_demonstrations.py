@@ -165,7 +165,10 @@ def test_load_black_win_transitions_missing_path() -> None:
 def test_load_ten_pawn_first_400ms_scoresheets() -> None:
     from pathlib import Path
 
-    from app.infrastructure.rl.white_demonstrations import load_black_win_transitions
+    from app.infrastructure.rl.white_demonstrations import (
+        black_transitions_from_scoresheet,
+        load_black_win_transitions,
+    )
     from quoridor.domain.actions import FORWARD_STEP_INDEX
 
     fixture_dir = Path(__file__).parent / "fixtures" / "black_wins_vs_400ms_pawn"
@@ -177,3 +180,12 @@ def test_load_ten_pawn_first_400ms_scoresheets() -> None:
     assert all(item.mask[item.action] for item in loaded)
     assert any(item.action == FORWARD_STEP_INDEX for item in loaded)
     assert len(load_black_win_transitions(fixture_dir, upsample_m14=2)) == 501
+    main = next(fixture_dir.glob("*M14_M15_M25.txt"))
+    main_n = len(black_transitions_from_scoresheet(main.read_text(encoding="utf-8")))
+    heavy = load_black_win_transitions(
+        fixture_dir,
+        upsample_m14=1,
+        upsample_stem="M14_M15_M25",
+        upsample_heavy=12,
+    )
+    assert len(heavy) == 365 + main_n * 11
