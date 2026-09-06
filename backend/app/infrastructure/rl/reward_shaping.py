@@ -9,9 +9,9 @@ from quoridor.pathfinding import DistanceCache, distances
 DEFAULT_POTENTIAL_SCALE = 8.0
 
 # Time-decayed revisit penalty: −α * γ_r^age for revisiting a recent cell.
-DEFAULT_REVISIT_ALPHA = 0.15
+DEFAULT_REVISIT_ALPHA = 0.25
 DEFAULT_REVISIT_DECAY = 0.5
-DEFAULT_REVISIT_MAX_AGE = 4
+DEFAULT_REVISIT_MAX_AGE = 8
 
 
 def potential(

@@ -38,6 +38,13 @@ def test_factory_five_tuple_illegal_prefix_skips_search() -> None:
     assert result.plies == 0
 
 
+def test_white_kinds_include_greedy_and_black_kinds_include_factory() -> None:
+    from app.infrastructure.rl.hunt_black_wins import BLACK_KINDS, WHITE_KINDS
+
+    assert "greedy" in WHITE_KINDS
+    assert "factory" in BLACK_KINDS
+
+
 def test_factory_normal_policy_is_live_400ms() -> None:
     from app.infrastructure.ai.minimax import NormalMinimaxPolicy
     from app.infrastructure.rl.hunt_black_wins import _factory_normal_policy

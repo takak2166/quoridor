@@ -189,3 +189,34 @@ def test_load_ten_pawn_first_400ms_scoresheets() -> None:
         upsample_heavy=12,
     )
     assert len(heavy) == 365 + main_n * 11
+
+
+def test_white_transitions_from_scoresheet_fixture() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.white_demonstrations import (
+        load_white_win_transitions,
+        white_transitions_from_scoresheet,
+    )
+    from quoridor.domain.actions import FORWARD_STEP_INDEX
+
+    fixture = Path(__file__).parent / "fixtures" / "white_win_vs_random.txt"
+    transitions = white_transitions_from_scoresheet(fixture.read_text(encoding="utf-8"))
+    assert transitions
+    assert all(item.obs.shape == (135,) for item in transitions)
+    assert all(item.mask.any() for item in transitions)
+    assert all(item.mask[item.action] for item in transitions)
+    assert any(item.action == FORWARD_STEP_INDEX for item in transitions)
+    loaded = load_white_win_transitions(fixture, upsample=3)
+    assert len(loaded) == len(transitions) * 3
+
+
+def test_load_white_win_transitions_missing_path() -> None:
+    from pathlib import Path
+
+    import pytest
+
+    from app.infrastructure.rl.white_demonstrations import load_white_win_transitions
+
+    with pytest.raises(FileNotFoundError, match="white-win scoresheets"):
+        load_white_win_transitions(Path("/no/such/white-scoresheets"))

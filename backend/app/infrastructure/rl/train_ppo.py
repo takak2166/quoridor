@@ -32,6 +32,7 @@ from app.infrastructure.rl.white_demonstrations import (
     collect_black_wins_vs_normal,
     collect_white_win_transitions,
     load_black_win_transitions,
+    load_white_win_transitions,
 )
 from quoridor.domain.actions import is_move_index
 
@@ -77,6 +78,7 @@ def _init_env(
     revisit_alpha: float,
     revisit_decay: float,
     revisit_max_age: int,
+    repeat_pawn_max_visits: int = 1,
     agent_white_prob: float,
     imitation_bonus: float,
 ) -> ActionMasker:
@@ -92,6 +94,7 @@ def _init_env(
             revisit_alpha=revisit_alpha,
             revisit_decay=revisit_decay,
             revisit_max_age=revisit_max_age,
+            repeat_pawn_max_visits=repeat_pawn_max_visits,
             agent_white_prob=agent_white_prob,
             imitation_bonus=imitation_bonus,
         ),
@@ -111,6 +114,7 @@ def _env_factories(
     revisit_alpha: float,
     revisit_decay: float,
     revisit_max_age: int,
+    repeat_pawn_max_visits: int = 1,
     agent_white_prob: float,
     imitation_bonus: float,
     n_envs: int,
@@ -127,6 +131,7 @@ def _env_factories(
         revisit_alpha=revisit_alpha,
         revisit_decay=revisit_decay,
         revisit_max_age=revisit_max_age,
+        repeat_pawn_max_visits=repeat_pawn_max_visits,
         agent_white_prob=agent_white_prob,
         imitation_bonus=imitation_bonus,
     )
@@ -145,6 +150,7 @@ def build_vec_env(
     revisit_alpha: float,
     revisit_decay: float,
     revisit_max_age: int,
+    repeat_pawn_max_visits: int = 1,
     n_envs: int,
     vec_env: str,
     agent_white_prob: float = 0.5,
@@ -161,6 +167,7 @@ def build_vec_env(
         revisit_alpha=revisit_alpha,
         revisit_decay=revisit_decay,
         revisit_max_age=revisit_max_age,
+        repeat_pawn_max_visits=repeat_pawn_max_visits,
         agent_white_prob=agent_white_prob,
         imitation_bonus=imitation_bonus,
         n_envs=n_envs,
@@ -555,12 +562,35 @@ def _log_stage(
     )
 
 
-def _clone_white_win_demos(model: MaskablePPO, *, demo_wins: int, epochs: int) -> None:
+def _load_white_demos(
+    *,
+    demo_wins: int,
+    scoresheets: str | None,
+    upsample: int = 1,
+    upsample_stem: str | None = None,
+    upsample_heavy: int = 1,
+) -> list:
+    if scoresheets:
+        demos = load_white_win_transitions(
+            scoresheets,
+            upsample=upsample,
+            upsample_stem=upsample_stem,
+            upsample_heavy=upsample_heavy,
+        )
+        if not demos:
+            raise SystemExit(f"White-win BC failed: no second-player wins in {scoresheets}")
+        return demos
     if demo_wins <= 0:
-        return
+        return []
     demos = collect_white_win_transitions(n_wins=demo_wins)
     if not demos:
         logger.warning("White-win BC skipped: no winning demonstrations")
+    return demos
+
+
+def _clone_white_win_demos(model: MaskablePPO, *, demo_wins: int, epochs: int) -> None:
+    demos = _load_white_demos(demo_wins=demo_wins, scoresheets=None)
+    if not demos:
         return
     behavior_clone(model, demos, epochs=epochs)
 
@@ -637,9 +667,15 @@ def main() -> None:
     parser.add_argument("--potential-scale", type=float, default=DEFAULT_POTENTIAL_SCALE)
     parser.add_argument("--max-wall-candidates", type=int, default=10)
     parser.add_argument("--opening-wall-free-plies", type=int, default=2)
-    parser.add_argument("--revisit-alpha", type=float, default=0.150)
+    parser.add_argument("--revisit-alpha", type=float, default=0.250)
     parser.add_argument("--revisit-decay", type=float, default=0.500)
-    parser.add_argument("--revisit-max-age", type=int, default=4)
+    parser.add_argument("--revisit-max-age", type=int, default=8)
+    parser.add_argument(
+        "--repeat-pawn-max-visits",
+        type=int,
+        default=1,
+        help="Mask pawn destinations visited more than this many times (0 disables)",
+    )
     parser.add_argument(
         "--min-move-prob-mass",
         type=float,
@@ -715,6 +751,30 @@ def main() -> None:
         type=int,
         default=DEFAULT_WHITE_DEMO_EPOCHS,
         help="Behavior-cloning epochs over White-win demonstrations",
+    )
+    parser.add_argument(
+        "--white-demo-scoresheets",
+        type=str,
+        default=None,
+        help="File or directory of White-win scoresheets (skips live White collection)",
+    )
+    parser.add_argument(
+        "--white-demo-upsample",
+        type=int,
+        default=2,
+        help="Repeat every White-win scoresheet this many times in the BC set",
+    )
+    parser.add_argument(
+        "--white-demo-upsample-stem",
+        type=str,
+        default=None,
+        help="Filename stem to overweight in White-win scoresheets",
+    )
+    parser.add_argument(
+        "--white-demo-upsample-heavy",
+        type=int,
+        default=1,
+        help="Repeat White scoresheets matching --white-demo-upsample-stem this many times",
     )
     parser.add_argument(
         "--black-demo-wins",
@@ -812,9 +872,17 @@ def main() -> None:
     imitation_bonus = args.imitation_bonus
     if imitation_bonus is None:
         imitation_bonus = DEFAULT_WHITE_WIN_IMITATION_BONUS if args.white_win_ramp else 0.0
-    if args.bc_only and demo_wins <= 0 and black_demo_wins <= 0 and not black_demo_scoresheets:
+    white_demo_scoresheets = args.white_demo_scoresheets
+    if (
+        args.bc_only
+        and demo_wins <= 0
+        and black_demo_wins <= 0
+        and not black_demo_scoresheets
+        and not white_demo_scoresheets
+    ):
         raise SystemExit(
-            "--bc-only requires --white-demo-wins, --black-demo-wins, or --black-demo-scoresheets"
+            "--bc-only requires --white-demo-wins, --black-demo-wins, "
+            "--white-demo-scoresheets, or --black-demo-scoresheets"
         )
 
     stages = _build_stages(
@@ -867,11 +935,17 @@ def main() -> None:
                 revisit_alpha=args.revisit_alpha,
                 revisit_decay=args.revisit_decay,
                 revisit_max_age=args.revisit_max_age,
+                repeat_pawn_max_visits=args.repeat_pawn_max_visits,
                 agent_white_prob=stage.agent_white_prob,
                 imitation_bonus=imitation_bonus,
             )
 
-            need_preclone = demo_wins > 0 or black_demo_wins > 0 or bool(black_demo_scoresheets)
+            need_preclone = (
+                demo_wins > 0
+                or black_demo_wins > 0
+                or bool(black_demo_scoresheets)
+                or bool(white_demo_scoresheets)
+            )
             if model is None and need_preclone:
                 dummy = build_vec_env(
                     stage.opponent,
@@ -903,22 +977,52 @@ def main() -> None:
                             gamma=args.gamma,
                             tensorboard_log=args.tb_log,
                         )
-                    _clone_white_win_demos(
-                        cloned,
+                    white_demos = _load_white_demos(
                         demo_wins=demo_wins,
-                        epochs=args.white_demo_epochs,
+                        scoresheets=white_demo_scoresheets,
+                        upsample=args.white_demo_upsample,
+                        upsample_stem=args.white_demo_upsample_stem,
+                        upsample_heavy=args.white_demo_upsample_heavy,
                     )
-                    _clone_black_wins_vs_normal(
-                        cloned,
-                        demo_wins=black_demo_wins,
-                        epochs=args.black_demo_epochs,
-                        max_games=args.black_demo_max_games,
-                        workers=args.black_demo_workers,
-                        scoresheets=black_demo_scoresheets,
-                        upsample_m14=args.black_demo_upsample_m14,
-                        upsample_stem=args.black_demo_upsample_stem,
-                        upsample_heavy=args.black_demo_upsample_heavy,
+                    black_demos = []
+                    if black_demo_scoresheets or black_demo_wins > 0:
+                        black_demos = load_black_win_transitions(
+                            black_demo_scoresheets,
+                            upsample_m14=args.black_demo_upsample_m14,
+                            upsample_stem=args.black_demo_upsample_stem,
+                            upsample_heavy=args.black_demo_upsample_heavy,
+                        ) if black_demo_scoresheets else []
+                        if not black_demos and black_demo_wins > 0:
+                            black_demos = collect_black_wins_vs_normal(
+                                n_wins=black_demo_wins,
+                                max_games=args.black_demo_max_games,
+                                workers=args.black_demo_workers,
+                            )
+                            if not black_demos:
+                                raise SystemExit(
+                                    "Black-win BC failed: node-limited Normal vs Normal "
+                                    "produced no first-player wins"
+                                )
+                        elif black_demo_scoresheets and not black_demos:
+                            raise SystemExit(
+                                f"Black-win BC failed: no first-player wins in {black_demo_scoresheets}"
+                            )
+                    demos = list(white_demos) + list(black_demos)
+                    if not demos:
+                        raise SystemExit("BC failed: no demonstration transitions")
+                    clone_epochs = max(args.white_demo_epochs, args.black_demo_epochs)
+                    if white_demos and not black_demos:
+                        clone_epochs = args.white_demo_epochs
+                    elif black_demos and not white_demos:
+                        clone_epochs = args.black_demo_epochs
+                    logger.info(
+                        "Joint BC: white=%d black=%d total=%d epochs=%d",
+                        len(white_demos),
+                        len(black_demos),
+                        len(demos),
+                        clone_epochs,
                     )
+                    behavior_clone(cloned, demos, epochs=clone_epochs)
                     bc_path = checkpoint_dir / "ppo_bc.zip"
                     cloned.save(str(bc_path))
                     logger.info("Saved BC checkpoint to %s", bc_path)

@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from collections import Counter
+from collections.abc import Sequence
+
 import numpy as np
 from numpy.typing import NDArray
 
@@ -40,6 +43,43 @@ def filter_opening_wall_free(
         return legal
     moves = [action for action in legal if isinstance(action, Move)]
     return moves or legal
+
+
+def filter_repeat_pawn_cells(
+    legal: list[Action],
+    path: Sequence[tuple[int, int]],
+    *,
+    max_visits: int = 1,
+) -> list[Action]:
+    """Drop pawn destinations already occupied more than ``max_visits`` times.
+
+    One retreat onto a visited cell stays legal. A second return to the same
+    cell (A-B-A-B) is removed when any alternative exists.
+    """
+    if max_visits < 0 or not path:
+        return legal
+    counts = Counter(path)
+    kept: list[Action] = []
+    for action in legal:
+        if (
+            isinstance(action, Move)
+            and action.to is not None
+            and counts[action.to] > max_visits
+        ):
+            continue
+        kept.append(action)
+    return kept or legal
+
+
+def exclude_previous_action(
+    legal: list[Action],
+    previous: Action | None,
+) -> list[Action]:
+    """Drop the action last taken from this position, if any alternative exists."""
+    if previous is None:
+        return legal
+    kept = [action for action in legal if action != previous]
+    return kept or legal
 
 
 def legal_actions_for_policy(

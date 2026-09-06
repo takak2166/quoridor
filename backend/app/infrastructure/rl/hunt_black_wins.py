@@ -22,8 +22,8 @@ from quoridor.rules import get_legal_actions
 
 PrefixSpec = tuple[str, int, int]
 
-BLACK_KINDS = ("normal", "greedy", "deep", "expert")
-WHITE_KINDS = ("node-limited", "factory")
+BLACK_KINDS = ("normal", "greedy", "deep", "expert", "factory")
+WHITE_KINDS = ("node-limited", "factory", "greedy")
 
 _SCORESHEET_TOKEN = re.compile(r"([MHV])\((\d+),\s*(\d+)\)")
 

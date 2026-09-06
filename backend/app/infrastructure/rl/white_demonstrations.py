@@ -200,6 +200,91 @@ def load_black_win_transitions(
     return collected
 
 
+def white_transitions_from_scoresheet(text: str) -> list[DemoTransition]:
+    """Replay a saved scoresheet and keep White's (second-player) transitions."""
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
+
+    specs = parse_scoresheet(text)
+    if not specs:
+        return []
+    game = Game.from_initial()
+    pending: list[DemoTransition] = []
+    for spec in specs:
+        action = resolve_prefix_action(game.state, spec)
+        if action is None:
+            logger.warning("scoresheet illegal at ply %d spec=%s", len(pending) * 2 + 2, spec)
+            return []
+        if game.state.current_player == "white":
+            pending.append(_record_transition(game.state, action, "white"))
+        game.play(action)
+        if game.is_finished:
+            break
+    if game.winner != "white" or not pending:
+        return []
+    return pending
+
+
+def load_white_win_transitions(
+    source: str | Path,
+    *,
+    upsample: int = 1,
+    upsample_stem: str | None = None,
+    upsample_heavy: int = 1,
+) -> list[DemoTransition]:
+    """Load unique White-win scoresheets from a file or directory of ``*.txt``."""
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet
+
+    path = Path(source)
+    if path.is_dir():
+        files = sorted(child for child in path.glob("*.txt") if child.is_file())
+    elif path.is_file():
+        files = [path]
+    else:
+        raise FileNotFoundError(f"white-win scoresheets not found: {path}")
+
+    seen: set[tuple] = set()
+    collected: list[DemoTransition] = []
+    heavy: list[DemoTransition] = []
+    games = 0
+    stem_key = (upsample_stem or "").strip()
+    for file in files:
+        text = file.read_text(encoding="utf-8")
+        if "scoresheet=" not in text:
+            lines = [line.strip() for line in text.splitlines() if line.strip()]
+            if not (len(lines) == 1 and lines[0][:1] in {"M", "H", "V"}):
+                continue
+        specs = tuple(parse_scoresheet(text))
+        if not specs or specs in seen:
+            continue
+        transitions = white_transitions_from_scoresheet(text)
+        if not transitions:
+            continue
+        seen.add(specs)
+        collected.extend(transitions)
+        games += 1
+        if stem_key and stem_key in file.stem:
+            heavy.extend(transitions)
+
+    extra = max(0, int(upsample) - 1)
+    if extra:
+        collected.extend(collected * extra)
+    extra_heavy = max(0, int(upsample_heavy) - 1)
+    if heavy and extra_heavy:
+        collected.extend(heavy * extra_heavy)
+
+    logger.info(
+        "White-win scoresheets: unique_games=%d transitions=%d upsample=%d "
+        "heavy_stem=%s heavy=%d from %s",
+        games,
+        len(collected),
+        max(1, int(upsample)),
+        stem_key or "-",
+        max(1, int(upsample_heavy)),
+        path,
+    )
+    return collected
+
+
 def collect_win_transitions(
     *,
     target: Color,

@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     require_expert_model_ready: bool = False
     ppo_max_wall_candidates: int | None = 10
     ppo_opening_wall_free_plies: int = 2
+    ppo_repeat_pawn_max_visits: int = 1
+    ppo_stall_plies: int = 40
 
     @property
     def cors_origin_list(self) -> list[str]:
