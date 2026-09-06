@@ -209,6 +209,8 @@ def test_white_transitions_from_scoresheet_fixture() -> None:
     assert any(item.action == FORWARD_STEP_INDEX for item in transitions)
     loaded = load_white_win_transitions(fixture, upsample=3)
     assert len(loaded) == len(transitions) * 3
+    skipped = load_white_win_transitions(fixture, upsample=1, opening_pawn_plies=100)
+    assert skipped == []
 
 
 def test_load_white_win_transitions_missing_path() -> None:

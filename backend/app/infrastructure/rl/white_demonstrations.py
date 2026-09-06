@@ -224,12 +224,21 @@ def white_transitions_from_scoresheet(text: str) -> list[DemoTransition]:
     return pending
 
 
+def _white_opening_is_pawns(specs: tuple, *, n: int) -> bool:
+    """True if White's first ``n`` actions are pawn moves (opening-wall-free)."""
+    if n <= 0:
+        return True
+    white_specs = specs[1::2][:n]
+    return len(white_specs) >= n and all(spec[0] == "M" for spec in white_specs)
+
+
 def load_white_win_transitions(
     source: str | Path,
     *,
     upsample: int = 1,
     upsample_stem: str | None = None,
     upsample_heavy: int = 1,
+    opening_pawn_plies: int = 2,
 ) -> list[DemoTransition]:
     """Load unique White-win scoresheets from a file or directory of ``*.txt``."""
     from app.infrastructure.rl.hunt_black_wins import parse_scoresheet
@@ -255,6 +264,9 @@ def load_white_win_transitions(
                 continue
         specs = tuple(parse_scoresheet(text))
         if not specs or specs in seen:
+            continue
+        if not _white_opening_is_pawns(specs, n=opening_pawn_plies):
+            logger.info("skip White sheet %s: first %d White moves are not pawns", file.name, opening_pawn_plies)
             continue
         transitions = white_transitions_from_scoresheet(text)
         if not transitions:
