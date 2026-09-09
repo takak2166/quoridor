@@ -4,15 +4,10 @@
 from __future__ import annotations
 
 import argparse
-import sys
 from pathlib import Path
 
 import numpy as np
 import torch
-
-ROOT = Path(__file__).resolve().parents[1]
-if str(ROOT) not in sys.path:
-    sys.path.insert(0, str(ROOT))
 
 from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame, legal_actions_for_policy
 from app.infrastructure.ai.ppo_loader import ppo_model_store
@@ -23,6 +18,8 @@ from quoridor.domain.actions import Action, Move, WallSlot
 from quoridor.domain.game import Game
 from quoridor.domain.state import Color, QuoridorState, initial_state
 from quoridor.pathfinding import SimpleDistanceCache
+
+ROOT = Path(__file__).resolve().parents[1]
 
 
 def _probs(model, state: QuoridorState, color: Color) -> tuple[np.ndarray, list[Action], tuple[int, int]]:
