@@ -156,6 +156,35 @@ def test_black_imitation_bonus_for_detour_around_face_wall() -> None:
     assert reward == 0.2
 
 
+def test_scoresheet_imitation_bonus_uses_teacher_book_not_greedy() -> None:
+    """A book action that is not greedy-forward still gets the scoresheet bonus."""
+    from app.infrastructure.rl.white_demonstrations import TeacherBook
+    from quoridor.domain.state import initial_state, position_key
+
+    opening = initial_state()
+    env = QuoridorEnv(
+        agent_color="black",
+        opponent="random",
+        reward_shaping=False,
+        imitation_bonus=0.2,
+        randomize_agent_color=False,
+        teacher_book=TeacherBook(
+            actions={
+                ("black", position_key(opening)): Move(direction="right", to=(0, 5)),
+            }
+        ),
+    )
+    env.reset(options={"agent_color": "black"})
+    _, reward, terminated, _, _ = env.step(FORWARD_STEP_INDEX)
+    assert not terminated
+    assert reward == 0.0
+
+    env.reset(options={"agent_color": "black"})
+    _, reward, terminated, _, _ = env.step(3)  # agent-frame right = M(0,5)
+    assert not terminated
+    assert reward == pytest.approx(0.2)
+
+
 def test_step_ends_episode_on_opponent_turn() -> None:
     env = QuoridorEnv(agent_color="white", opponent="random", reward_shaping=False)
     env.reset(options={"agent_color": "white"})

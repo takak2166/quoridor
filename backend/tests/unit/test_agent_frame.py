@@ -8,7 +8,7 @@ from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame
 from app.infrastructure.rl.action_resolution import resolve_agent_index_to_action
 from app.infrastructure.rl.env import QuoridorEnv
 from app.infrastructure.rl.reward_shaping import revisit_penalty
-from app.mappers.observation_mapper import to_observation
+from app.mappers.observation_mapper import SECOND_PLAYER_OBS_INDEX, to_observation
 from quoridor.agent_frame import pawn_to_agent_frame, state_to_agent_frame
 from quoridor.domain.actions import FORWARD_STEP_INDEX, NUM_ACTIONS, Move
 from quoridor.domain.state import initial_state
@@ -19,9 +19,13 @@ def test_num_actions_relative_delta_space() -> None:
     assert NUM_ACTIONS == 140
 
 
-def test_opening_observations_match() -> None:
+def test_opening_observations_match_except_second_player_bit() -> None:
     state = initial_state()
-    np.testing.assert_array_equal(to_observation(state, "white"), to_observation(state, "black"))
+    black = to_observation(state, "black")
+    white = to_observation(state, "white")
+    assert black[SECOND_PLAYER_OBS_INDEX] == 0.0
+    assert white[SECOND_PLAYER_OBS_INDEX] == 1.0
+    np.testing.assert_array_equal(black[:SECOND_PLAYER_OBS_INDEX], white[:SECOND_PLAYER_OBS_INDEX])
 
 
 def test_revisit_penalty_decays() -> None:

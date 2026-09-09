@@ -19,7 +19,7 @@ from app.mappers.observation_mapper import to_observation
 from quoridor.agent_frame import encode_for_viewer
 from quoridor.domain.actions import Action, Move, WallSlot
 from quoridor.domain.game import Game
-from quoridor.domain.state import Color, QuoridorState
+from quoridor.domain.state import Color, QuoridorState, position_key
 from quoridor.pathfinding import DistanceCache, distances
 from quoridor.rules import apply_action, get_legal_actions
 
@@ -88,6 +88,100 @@ def is_greedy_race_action(
     if isinstance(action, Move) and isinstance(teacher, Move):
         return action.to == teacher.to
     return action == teacher
+
+
+def actions_match(left: Action, right: Action) -> bool:
+    if isinstance(left, Move) and isinstance(right, Move):
+        return left.to == right.to
+    return left == right
+
+
+@dataclass(frozen=True)
+class TeacherBook:
+    """Absolute-state lookup of scoresheet actions for imitation bonus."""
+
+    actions: dict[tuple[Color, tuple], Action]
+
+    def action_for(self, state: QuoridorState, color: Color) -> Action | None:
+        return self.actions.get((color, position_key(state)))
+
+    def matches(self, state: QuoridorState, color: Color, action: Action) -> bool:
+        teacher = self.action_for(state, color)
+        return teacher is not None and actions_match(teacher, action)
+
+
+def _scoresheet_files(source: str | Path) -> list[Path]:
+    path = Path(source)
+    if path.is_dir():
+        return sorted(child for child in path.glob("*.txt") if child.is_file())
+    if path.is_file():
+        return [path]
+    raise FileNotFoundError(f"scoresheets not found: {path}")
+
+
+def _teacher_entries_from_scoresheet(text: str, target: Color) -> list[tuple[tuple, Action]]:
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
+
+    specs = parse_scoresheet(text)
+    if not specs:
+        return []
+    game = Game.from_initial()
+    entries: list[tuple[tuple, Action]] = []
+    for spec in specs:
+        action = resolve_prefix_action(game.state, spec)
+        if action is None:
+            return []
+        if game.state.current_player == target:
+            entries.append((position_key(game.state), action))
+        game.play(action)
+        if game.is_finished:
+            break
+    if game.winner != target or not entries:
+        return []
+    return entries
+
+
+def load_teacher_book(
+    *,
+    black_source: str | Path | None = None,
+    white_source: str | Path | None = None,
+    black_prefer_stem: str | None = None,
+    white_prefer_stem: str | None = None,
+) -> TeacherBook:
+    """Map (color, position_key) to the scoresheet action.
+
+    Unique winning games are loaded first; sheets whose filename contains
+    ``*_prefer_stem`` overwrite conflicts so the main line wins ties.
+    """
+    actions: dict[tuple[Color, tuple], Action] = {}
+
+    def ingest(source: str | Path, target: Color, prefer_stem: str | None) -> None:
+        preferred: list[Path] = []
+        stem_key = (prefer_stem or "").strip()
+        for file in _scoresheet_files(source):
+            text = file.read_text(encoding="utf-8")
+            if "scoresheet=" not in text:
+                continue
+            entries = _teacher_entries_from_scoresheet(text, target)
+            if not entries:
+                continue
+            if stem_key and stem_key in file.stem:
+                preferred.append(file)
+                continue
+            for key, action in entries:
+                actions[(target, key)] = action
+        for file in preferred:
+            for key, action in _teacher_entries_from_scoresheet(
+                file.read_text(encoding="utf-8"), target
+            ):
+                actions[(target, key)] = action
+
+    if black_source:
+        ingest(black_source, "black", black_prefer_stem)
+    if white_source:
+        ingest(white_source, "white", white_prefer_stem)
+    logger.info("Teacher book: positions=%d", len(actions))
+    return TeacherBook(actions=actions)
 
 
 def _random_legal_action(state: QuoridorState, rng: random.Random) -> Action:

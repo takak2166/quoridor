@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
-# Joint BC: restore the Black M14_M15_M25 main-line share (~53%, same as the
-# thick Black-only BC) and keep a thinner White book so White does not wash it
-# out. Loop filters live in the policy/env; this script only clones.
-# Mix: White 391 (1x + main x2) + Black 1078 (1x + M14_M15_M25 x24) = 1469.
+# Joint BC on the second-player bit (obs[134]): keep the Black M14_M15_M25
+# main line thick and overweight the White M(7,4)->M(6,4) wall book so both
+# colors can coexist. Mix: White ~866 (2x + main x6) + Black ~1078 (1x +
+# M14_M15_M25 x24). Loop filters live in the policy/env; this script only clones.
 set -euo pipefail
 cd /home/ubuntu/quoridor/backend
 source .venv/bin/activate
 export PYTHONUNBUFFERED=1
-OUT_DIR="${OUT_DIR:-../models/finetune_bw_400ms_loop}"
+OUT_DIR="${OUT_DIR:-../models/finetune_bw_sidebit}"
 mkdir -p "$OUT_DIR/checkpoints"
 exec python -u -m app.infrastructure.rl.train_ppo \
   --resume ../models/finetune_black_400ms_pawn/model.zip \
   --white-demo-wins 0 \
   --white-demo-scoresheets artifacts/white_wins_vs_400ms/pawn_first \
-  --white-demo-upsample 1 \
+  --white-demo-upsample 2 \
   --white-demo-upsample-stem M_7_4_M_2_4_M_6_4 \
-  --white-demo-upsample-heavy 2 \
+  --white-demo-upsample-heavy 6 \
   --white-demo-epochs 80 \
   --black-demo-wins 0 \
   --black-demo-scoresheets artifacts/black_wins_vs_400ms/pawn_first \
@@ -37,5 +37,5 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --repeat-pawn-max-visits 1 \
   --output "$OUT_DIR/model.zip" \
   --checkpoint-dir "$OUT_DIR/checkpoints" \
-  --tb-log runs/quoridor_finetune_bw_400ms_loop \
+  --tb-log runs/quoridor_finetune_bw_sidebit \
   2>&1 | tee "$OUT_DIR/bc_joint.log"

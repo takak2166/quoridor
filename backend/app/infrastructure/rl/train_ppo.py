@@ -28,10 +28,12 @@ from app.infrastructure.rl.white_demonstrations import (
     DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
     DEFAULT_WHITE_DEMO_EPOCHS,
     DEFAULT_WHITE_DEMO_WINS,
+    TeacherBook,
     behavior_clone,
     collect_black_wins_vs_normal,
     collect_white_win_transitions,
     load_black_win_transitions,
+    load_teacher_book,
     load_white_win_transitions,
 )
 from quoridor.domain.actions import is_move_index
@@ -81,6 +83,7 @@ def _init_env(
     repeat_pawn_max_visits: int = 1,
     agent_white_prob: float,
     imitation_bonus: float,
+    teacher_book: TeacherBook | None = None,
 ) -> ActionMasker:
     return ActionMasker(
         QuoridorEnv(
@@ -97,6 +100,7 @@ def _init_env(
             repeat_pawn_max_visits=repeat_pawn_max_visits,
             agent_white_prob=agent_white_prob,
             imitation_bonus=imitation_bonus,
+            teacher_book=teacher_book,
         ),
         mask_fn,
     )
@@ -117,6 +121,7 @@ def _env_factories(
     repeat_pawn_max_visits: int = 1,
     agent_white_prob: float,
     imitation_bonus: float,
+    teacher_book: TeacherBook | None = None,
     n_envs: int,
 ) -> list[Callable[[], ActionMasker]]:
     factory = partial(
@@ -134,6 +139,7 @@ def _env_factories(
         repeat_pawn_max_visits=repeat_pawn_max_visits,
         agent_white_prob=agent_white_prob,
         imitation_bonus=imitation_bonus,
+        teacher_book=teacher_book,
     )
     return [factory for _ in range(n_envs)]
 
@@ -155,6 +161,7 @@ def build_vec_env(
     vec_env: str,
     agent_white_prob: float = 0.5,
     imitation_bonus: float = 0.0,
+    teacher_book: TeacherBook | None = None,
 ) -> MaskDiagnosticVecEnv:
     factories = _env_factories(
         opponent,
@@ -170,6 +177,7 @@ def build_vec_env(
         repeat_pawn_max_visits=repeat_pawn_max_visits,
         agent_white_prob=agent_white_prob,
         imitation_bonus=imitation_bonus,
+        teacher_book=teacher_book,
         n_envs=n_envs,
     )
     if vec_env == "subproc":
@@ -839,7 +847,22 @@ def main() -> None:
         "--imitation-bonus",
         type=float,
         default=None,
-        help="Extra reward when the agent matches the greedy racing move (default: 0.2 with --white-win-ramp)",
+        help=(
+            "Extra reward when the agent matches the imitation target "
+            "(greedy race, or scoresheet action with --imitation-source scoresheet)"
+        ),
+    )
+    parser.add_argument(
+        "--imitation-source",
+        type=str,
+        default="greedy",
+        choices=["greedy", "scoresheet"],
+        help="Imitation bonus target: greedy race or loaded win scoresheets",
+    )
+    parser.add_argument(
+        "--no-bc",
+        action="store_true",
+        help="Skip behavior cloning (use with --resume after a previous BC)",
     )
     parser.add_argument("--tb-log", type=str, default="runs/quoridor")
     parser.add_argument(
@@ -873,6 +896,22 @@ def main() -> None:
     if imitation_bonus is None:
         imitation_bonus = DEFAULT_WHITE_WIN_IMITATION_BONUS if args.white_win_ramp else 0.0
     white_demo_scoresheets = args.white_demo_scoresheets
+    teacher_book: TeacherBook | None = None
+    if args.imitation_source == "scoresheet":
+        if not black_demo_scoresheets and not white_demo_scoresheets:
+            raise SystemExit(
+                "--imitation-source scoresheet requires --black-demo-scoresheets "
+                "and/or --white-demo-scoresheets"
+            )
+        teacher_book = load_teacher_book(
+            black_source=black_demo_scoresheets,
+            white_source=white_demo_scoresheets,
+            black_prefer_stem=args.black_demo_upsample_stem,
+            white_prefer_stem=args.white_demo_upsample_stem,
+        )
+        if not teacher_book.actions:
+            raise SystemExit("imitation scoresheet book is empty")
+        logger.info("Scoresheet imitation book: %d positions", len(teacher_book.actions))
     if (
         args.bc_only
         and demo_wins <= 0
@@ -938,9 +977,10 @@ def main() -> None:
                 repeat_pawn_max_visits=args.repeat_pawn_max_visits,
                 agent_white_prob=stage.agent_white_prob,
                 imitation_bonus=imitation_bonus,
+                teacher_book=teacher_book,
             )
 
-            need_preclone = (
+            need_preclone = (not args.no_bc) and (
                 demo_wins > 0
                 or black_demo_wins > 0
                 or bool(black_demo_scoresheets)

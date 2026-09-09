@@ -22,7 +22,7 @@ from app.infrastructure.rl.reward_shaping import (
     shaped_step_reward,
 )
 from app.infrastructure.rl.stuck_diagnostic import log_and_dump_stuck
-from app.infrastructure.rl.white_demonstrations import is_greedy_race_action
+from app.infrastructure.rl.white_demonstrations import TeacherBook, is_greedy_race_action
 from app.mappers.observation_mapper import to_observation
 from quoridor.domain.actions import NUM_ACTIONS, Move, WallSlot, decode, is_move_index
 from quoridor.domain.state import Color, initial_state
@@ -89,6 +89,7 @@ class QuoridorEnv(gym.Env):
         loop_filter_plies: int = 36,
         agent_white_prob: float = 0.5,
         imitation_bonus: float = 0.0,
+        teacher_book: TeacherBook | None = None,
     ) -> None:
         super().__init__()
         self._default_agent_color: Color = _as_color(agent_color)
@@ -113,6 +114,7 @@ class QuoridorEnv(gym.Env):
             raise ValueError(f"agent_white_prob must be in [0, 1], got {agent_white_prob}")
         self.agent_white_prob = float(agent_white_prob)
         self.imitation_bonus = max(0.0, float(imitation_bonus))
+        self.teacher_book = teacher_book
         self._agent_plies_played = 0
         self._agent_path: list[tuple[int, int]] = []
         self._last_agent_action: Move | WallSlot | None = None
@@ -265,10 +267,12 @@ class QuoridorEnv(gym.Env):
         else:
             reward = terminal_reward
         reward += revisit
-        if self.imitation_bonus > 0.0 and is_greedy_race_action(
-            state_before, self.agent_color, move, self._cache
-        ):
-            reward += self.imitation_bonus
+        if self.imitation_bonus > 0.0:
+            if self.teacher_book is not None:
+                if self.teacher_book.matches(state_before, self.agent_color, move):
+                    reward += self.imitation_bonus
+            elif is_greedy_race_action(state_before, self.agent_color, move, self._cache):
+                reward += self.imitation_bonus
 
         if not terminated and not self._is_agent_to_play():
             logger.error(

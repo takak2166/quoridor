@@ -6,6 +6,11 @@ from numpy.typing import NDArray
 from quoridor.agent_frame import state_to_agent_frame
 from quoridor.domain.state import Color, QuoridorState
 
+# Last channel: 1 if the viewer is second player (White), else 0.
+# Agent-frame pawns/walls are color-symmetric; without this bit the policy
+# cannot keep a first-player book and a second-player book at once.
+SECOND_PLAYER_OBS_INDEX = 134
+
 
 def to_observation(state: QuoridorState, agent_color: Color) -> NDArray[np.float32]:
     """Build a 135-d observation in the agent frame (goal always toward row 0)."""
@@ -33,6 +38,5 @@ def to_observation(state: QuoridorState, agent_color: Color) -> NDArray[np.float
         for col in range(8):
             obs[idx] = 1.0 if framed.vertical_walls[row][col] else 0.0
             idx += 1
-    # Agent frame is always White-like; keep a constant channel for shape stability.
-    obs[134] = 1.0
+    obs[SECOND_PLAYER_OBS_INDEX] = 1.0 if agent_color == "white" else 0.0
     return obs

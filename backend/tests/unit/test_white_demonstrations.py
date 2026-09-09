@@ -132,6 +132,9 @@ def test_black_transitions_from_m14_scoresheet() -> None:
     assert len(transitions) == 32
     assert transitions[0].action == FORWARD_STEP_INDEX
     assert all(item.obs.shape == (135,) for item in transitions)
+    from app.mappers.observation_mapper import SECOND_PLAYER_OBS_INDEX
+
+    assert all(item.obs[SECOND_PLAYER_OBS_INDEX] == 0.0 for item in transitions)
     assert all(item.mask.any() for item in transitions)
     assert all(item.mask[item.action] for item in transitions)
 
@@ -198,12 +201,14 @@ def test_white_transitions_from_scoresheet_fixture() -> None:
         load_white_win_transitions,
         white_transitions_from_scoresheet,
     )
+    from app.mappers.observation_mapper import SECOND_PLAYER_OBS_INDEX
     from quoridor.domain.actions import FORWARD_STEP_INDEX
 
     fixture = Path(__file__).parent / "fixtures" / "white_win_vs_random.txt"
     transitions = white_transitions_from_scoresheet(fixture.read_text(encoding="utf-8"))
     assert transitions
     assert all(item.obs.shape == (135,) for item in transitions)
+    assert all(item.obs[SECOND_PLAYER_OBS_INDEX] == 1.0 for item in transitions)
     assert all(item.mask.any() for item in transitions)
     assert all(item.mask[item.action] for item in transitions)
     assert any(item.action == FORWARD_STEP_INDEX for item in transitions)
@@ -222,3 +227,47 @@ def test_load_white_win_transitions_missing_path() -> None:
 
     with pytest.raises(FileNotFoundError, match="white-win scoresheets"):
         load_white_win_transitions(Path("/no/such/white-scoresheets"))
+
+
+def test_teacher_book_prefers_stem_and_matches_opening() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.white_demonstrations import load_teacher_book
+    from quoridor.domain.actions import Move
+    from quoridor.domain.state import initial_state
+
+    black = Path(__file__).parent / "fixtures" / "black_win_vs_normal_m14.txt"
+    white = Path(__file__).parent / "fixtures" / "white_win_vs_random.txt"
+    book = load_teacher_book(black_source=black, white_source=white)
+    opening = initial_state()
+    teacher = book.action_for(opening, "black")
+    assert isinstance(teacher, Move)
+    assert teacher.to == (1, 4)
+    assert book.matches(opening, "black", Move(direction="up", to=(1, 4)))
+    assert not book.matches(opening, "white", Move(direction="up", to=(1, 4)))
+
+
+def test_teacher_book_prefer_stem_overwrites_conflicts(tmp_path) -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
+    from app.infrastructure.rl.white_demonstrations import load_teacher_book
+    from quoridor.domain.actions import Move
+    from quoridor.domain.game import Game
+
+    fixture_dir = Path(__file__).parent / "fixtures" / "black_wins_vs_400ms_pawn"
+    other_src = next(fixture_dir.glob("*M14_M15_M16.txt"))
+    main_src = next(fixture_dir.glob("*M14_M15_M25.txt"))
+    # Sorted ingest would let zzz_other win the shared prefix; prefer-stem must undo that.
+    (tmp_path / "aaa_M14_M15_M25.txt").write_text(main_src.read_text(encoding="utf-8"), encoding="utf-8")
+    (tmp_path / "zzz_other.txt").write_text(other_src.read_text(encoding="utf-8"), encoding="utf-8")
+
+    book = load_teacher_book(black_source=tmp_path, black_prefer_stem="M14_M15_M25")
+    game = Game.from_initial()
+    for spec in parse_scoresheet(main_src.read_text(encoding="utf-8"))[:4]:
+        action = resolve_prefix_action(game.state, spec)
+        assert action is not None
+        game.play(action)
+    teacher = book.action_for(game.state, "black")
+    assert isinstance(teacher, Move)
+    assert teacher.to == (2, 5)
