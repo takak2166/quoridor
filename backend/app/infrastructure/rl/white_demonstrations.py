@@ -119,6 +119,13 @@ def _scoresheet_files(source: str | Path) -> list[Path]:
     raise FileNotFoundError(f"scoresheets not found: {path}")
 
 
+def _looks_like_scoresheet(text: str) -> bool:
+    if "scoresheet=" in text:
+        return True
+    lines = [line.strip() for line in text.splitlines() if line.strip()]
+    return len(lines) == 1 and lines[0][:1] in {"M", "H", "V"}
+
+
 def _teacher_entries_from_scoresheet(text: str, target: Color) -> list[tuple[tuple, Action]]:
     from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
 
@@ -160,7 +167,7 @@ def load_teacher_book(
         stem_key = (prefer_stem or "").strip()
         for file in _scoresheet_files(source):
             text = file.read_text(encoding="utf-8")
-            if "scoresheet=" not in text:
+            if not _looks_like_scoresheet(text):
                 continue
             entries = _teacher_entries_from_scoresheet(text, target)
             if not entries:

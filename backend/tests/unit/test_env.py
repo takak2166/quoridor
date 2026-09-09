@@ -226,11 +226,13 @@ def test_mask_only_agent_legal_moves() -> None:
 
 
 def test_observation_is_agent_relative_for_both_colors() -> None:
+    from app.mappers.observation_mapper import SECOND_PLAYER_OBS_INDEX
+
     env = QuoridorEnv()
     obs_white, _ = env.reset(options={"agent_color": "white"})
-    assert obs_white[134] == 1.0
+    assert obs_white[SECOND_PLAYER_OBS_INDEX] == 1.0
     assert obs_white[0] == 1.0  # agent at bottom row 8
 
     obs_black, _ = env.reset(options={"agent_color": "black"})
-    assert obs_black[134] == 1.0
+    assert obs_black[SECOND_PLAYER_OBS_INDEX] == 0.0
     assert obs_black[0] == 1.0
