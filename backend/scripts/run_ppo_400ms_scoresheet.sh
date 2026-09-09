@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 # Short PPO after the side-bit joint BC. Do not re-clone (that overwrote the
 # opening before). Reward the scoresheet teacher, not greedy race.
+#
+# 20k steps peaked the book (H(7,4) stayed ~97%, openings rose to ~96%) but
+# seed-97 16-game Hard vs factory Normal went 12.5% (BC) -> 0%. Prefer the
+# BC zip in models/finetune_bw_sidebit/ until a longer or mix-free run wins.
 set -euo pipefail
 cd /home/ubuntu/quoridor/backend
 source .venv/bin/activate
