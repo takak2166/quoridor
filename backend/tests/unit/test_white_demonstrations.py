@@ -208,7 +208,7 @@ def test_white_transitions_from_scoresheet_fixture() -> None:
     transitions = white_transitions_from_scoresheet(fixture.read_text(encoding="utf-8"))
     assert transitions
     assert all(item.obs.shape == (135,) for item in transitions)
-    assert all(item.obs[SECOND_PLAYER_OBS_INDEX] == 1.0 for item in transitions)
+    assert all(item.obs[SECOND_PLAYER_OBS_INDEX] == 0.0 for item in transitions)
     assert all(item.mask.any() for item in transitions)
     assert all(item.mask[item.action] for item in transitions)
     assert any(item.action == FORWARD_STEP_INDEX for item in transitions)
@@ -216,6 +216,20 @@ def test_white_transitions_from_scoresheet_fixture() -> None:
     assert len(loaded) == len(transitions) * 3
     skipped = load_white_win_transitions(fixture, upsample=1, opening_pawn_plies=100)
     assert skipped == []
+
+
+def test_white_transitions_set_second_player_bit_when_enabled(monkeypatch) -> None:
+    from pathlib import Path
+
+    from app.config import settings
+    from app.infrastructure.rl.white_demonstrations import white_transitions_from_scoresheet
+    from app.mappers.observation_mapper import SECOND_PLAYER_OBS_INDEX
+
+    monkeypatch.setattr(settings, "second_player_obs_bit", True)
+    fixture = Path(__file__).parent / "fixtures" / "white_win_vs_random.txt"
+    transitions = white_transitions_from_scoresheet(fixture.read_text(encoding="utf-8"))
+    assert transitions
+    assert all(item.obs[SECOND_PLAYER_OBS_INDEX] == 1.0 for item in transitions)
 
 
 def test_load_white_win_transitions_missing_path() -> None:

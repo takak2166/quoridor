@@ -230,9 +230,21 @@ def test_observation_is_agent_relative_for_both_colors() -> None:
 
     env = QuoridorEnv()
     obs_white, _ = env.reset(options={"agent_color": "white"})
-    assert obs_white[SECOND_PLAYER_OBS_INDEX] == 1.0
+    assert obs_white[SECOND_PLAYER_OBS_INDEX] == 0.0
     assert obs_white[0] == 1.0  # agent at bottom row 8
 
     obs_black, _ = env.reset(options={"agent_color": "black"})
     assert obs_black[SECOND_PLAYER_OBS_INDEX] == 0.0
     assert obs_black[0] == 1.0
+
+
+def test_env_second_player_bit_follows_settings(monkeypatch) -> None:
+    from app.config import settings
+    from app.mappers.observation_mapper import SECOND_PLAYER_OBS_INDEX
+
+    monkeypatch.setattr(settings, "second_player_obs_bit", True)
+    env = QuoridorEnv()
+    obs_white, _ = env.reset(options={"agent_color": "white"})
+    assert obs_white[SECOND_PLAYER_OBS_INDEX] == 1.0
+    obs_black, _ = env.reset(options={"agent_color": "black"})
+    assert obs_black[SECOND_PLAYER_OBS_INDEX] == 0.0

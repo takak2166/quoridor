@@ -1,10 +1,13 @@
 #!/usr/bin/env bash
-# Evaluate a Hard zip vs factory Normal. Default is the second-player-bit joint BC.
+# Evaluate a Hard zip vs factory Normal.
+# Match the zip: sidebit was trained with QUORIDOR_SECOND_PLAYER_OBS_BIT=true.
+# For models/finetune_bw_nobit/model.zip, set the var to false (Settings default).
 set -euo pipefail
 cd /home/ubuntu/quoridor/backend
 source .venv/bin/activate
 export PYTHONUNBUFFERED=1
 export QUORIDOR_MODEL_HARD="${QUORIDOR_MODEL_HARD:-../models/finetune_bw_sidebit/model.zip}"
+export QUORIDOR_SECOND_PLAYER_OBS_BIT="${QUORIDOR_SECOND_PLAYER_OBS_BIT:-true}"
 GAMES="${1:-16}"
 SEED="${2:-97}"
 LOG_DIR="$(dirname "$QUORIDOR_MODEL_HARD")"

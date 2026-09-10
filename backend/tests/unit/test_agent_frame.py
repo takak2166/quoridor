@@ -19,10 +19,18 @@ def test_num_actions_relative_delta_space() -> None:
     assert NUM_ACTIONS == 140
 
 
-def test_opening_observations_match_except_second_player_bit() -> None:
+def test_opening_observations_match_without_second_player_bit() -> None:
     state = initial_state()
-    black = to_observation(state, "black")
-    white = to_observation(state, "white")
+    black = to_observation(state, "black", second_player_bit=False)
+    white = to_observation(state, "white", second_player_bit=False)
+    np.testing.assert_array_equal(black, white)
+    assert black[SECOND_PLAYER_OBS_INDEX] == 0.0
+
+
+def test_second_player_bit_only_changes_last_channel() -> None:
+    state = initial_state()
+    black = to_observation(state, "black", second_player_bit=True)
+    white = to_observation(state, "white", second_player_bit=True)
     assert black[SECOND_PLAYER_OBS_INDEX] == 0.0
     assert white[SECOND_PLAYER_OBS_INDEX] == 1.0
     np.testing.assert_array_equal(black[:SECOND_PLAYER_OBS_INDEX], white[:SECOND_PLAYER_OBS_INDEX])

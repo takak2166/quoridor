@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     ppo_repeat_pawn_max_visits: int = 1
     ppo_loop_filter_plies: int = 36
     ppo_stall_plies: int = 40
+    # When True, obs[134] is 1 for White (second player). Agent-frame geometry
+    # is otherwise color-symmetric; this bit is the A/B toggle for whether the
+    # policy may keep separate first/second-player books.
+    second_player_obs_bit: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:
