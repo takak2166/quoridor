@@ -8,6 +8,7 @@ source .venv/bin/activate
 export PYTHONUNBUFFERED=1
 export QUORIDOR_MODEL_HARD="${QUORIDOR_MODEL_HARD:-../models/finetune_bw_sidebit/model.zip}"
 export QUORIDOR_SECOND_PLAYER_OBS_BIT="${QUORIDOR_SECOND_PLAYER_OBS_BIT:-true}"
+export QUORIDOR_PPO_MAX_WALL_CANDIDATES="${QUORIDOR_PPO_MAX_WALL_CANDIDATES:-0}"
 GAMES="${1:-16}"
 SEED="${2:-97}"
 LOG_DIR="$(dirname "$QUORIDOR_MODEL_HARD")"

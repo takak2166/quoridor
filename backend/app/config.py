@@ -19,7 +19,9 @@ class Settings(BaseSettings):
     trust_forwarded_for: bool = False
     require_hard_model_ready: bool = False
     require_expert_model_ready: bool = False
-    ppo_max_wall_candidates: int | None = 10
+    # 0 / None = all legal walls. The path-affecting top-10 drops the White
+    # ply-14 teacher H(4,0) and forces the 49-move V(5,0) loss.
+    ppo_max_wall_candidates: int | None = 0
     ppo_opening_wall_free_plies: int = 2
     ppo_repeat_pawn_max_visits: int = 1
     ppo_loop_filter_plies: int = 36
