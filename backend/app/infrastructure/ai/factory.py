@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 from app.config import settings
-from app.infrastructure.ai.action_mask import legal_actions_for_policy
+from app.infrastructure.ai.action_mask import legal_actions_for_policy, policy_wall_candidate_limit
 from app.infrastructure.ai.mcts import mcts_search
 from app.infrastructure.ai.minimax import (
     EasyMinimaxPolicy,
@@ -162,7 +162,7 @@ class ExpertMCTSPolicy:
         legal = legal_actions_for_policy(
             state,
             None,
-            settings.ppo_max_wall_candidates,
+            policy_wall_candidate_limit(settings.ppo_max_wall_candidates),
             color=color,
             opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
         )

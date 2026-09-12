@@ -9,7 +9,12 @@ from pathlib import Path
 import numpy as np
 import torch
 
-from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame, legal_actions_for_policy
+from app.config import settings
+from app.infrastructure.ai.action_mask import (
+    legal_action_mask_agent_frame,
+    legal_actions_for_policy,
+    policy_wall_candidate_limit,
+)
 from app.infrastructure.ai.ppo_loader import ppo_model_store
 from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
 from app.mappers.observation_mapper import to_observation
@@ -24,7 +29,13 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _probs(model, state: QuoridorState, color: Color) -> tuple[np.ndarray, list[Action], tuple[int, int]]:
     cache = SimpleDistanceCache()
-    legal = legal_actions_for_policy(state, cache, 10, color=color, opening_wall_free_plies=2)
+    legal = legal_actions_for_policy(
+        state,
+        cache,
+        policy_wall_candidate_limit(settings.ppo_max_wall_candidates),
+        color=color,
+        opening_wall_free_plies=2,
+    )
     from_pos = state.pawn(color)
     obs = to_observation(state, color)
     mask = legal_action_mask_agent_frame(legal, color, from_pos=from_pos)

@@ -14,6 +14,7 @@ from app.infrastructure.ai.action_mask import (
     filter_repeat_pawn_cells,
     legal_action_mask_agent_frame,
     legal_actions_for_policy,
+    policy_wall_candidate_limit,
 )
 from app.infrastructure.ai.evaluation import StateEvaluator
 from app.infrastructure.ai.ppo_loader import ppo_model_store
@@ -44,7 +45,7 @@ class PPOPolicy:
         legal = legal_actions_for_policy(
             state,
             self._dist_cache,
-            settings.ppo_max_wall_candidates,
+            policy_wall_candidate_limit(settings.ppo_max_wall_candidates),
             color=color,
             opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
         )
@@ -79,7 +80,7 @@ class PPOPolicy:
         legal = legal_actions_for_policy(
             state,
             self._dist_cache,
-            settings.ppo_max_wall_candidates,
+            policy_wall_candidate_limit(settings.ppo_max_wall_candidates),
             color=color,
             opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
         )

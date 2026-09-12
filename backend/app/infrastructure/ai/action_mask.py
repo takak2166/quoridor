@@ -82,6 +82,13 @@ def exclude_previous_action(
     return kept or legal
 
 
+def policy_wall_candidate_limit(raw: int | None) -> int | None:
+    """None or non-positive means no wall cap (all legal walls stay visible)."""
+    if raw is None or raw <= 0:
+        return None
+    return raw
+
+
 def legal_actions_for_policy(
     state: QuoridorState,
     cache: DistanceCache | None,
@@ -91,10 +98,11 @@ def legal_actions_for_policy(
     opening_wall_free_plies: int = 0,
 ) -> list[Action]:
     legal = get_legal_actions(state, dist_cache=cache)
-    if max_wall_candidates is None:
+    limit = policy_wall_candidate_limit(max_wall_candidates)
+    if limit is None:
         selected = legal
     else:
-        selected = search_actions(state, legal, cache, max_wall_candidates)
+        selected = search_actions(state, legal, cache, limit)
     viewer = color if color is not None else state.current_player
     return filter_opening_wall_free(selected, state, viewer, opening_wall_free_plies)
 
