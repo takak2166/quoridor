@@ -152,6 +152,46 @@ def test_load_hard_loss_texts_filters_by_color(tmp_path: Path) -> None:
     assert len(load_hard_loss_texts(tmp_path, "black")) == 1
 
 
+def test_uncovered_sheet_follow_clones_suffix_actions() -> None:
+    from app.infrastructure.rl.dagger_losses import uncovered_sheet_follow_transitions
+    from app.infrastructure.rl.white_demonstrations import TeacherBook
+    from quoridor.agent_frame import encode_for_viewer
+
+    opening = initial_state()
+    teacher = Move(direction="up", to=(1, 4))
+    book = TeacherBook(actions={("black", position_key(opening)): teacher})
+    focused = uncovered_sheet_follow_transitions(
+        ["scoresheet=M(1, 4),M(7, 4),M(2, 4)"],
+        book,
+        "black",
+        max_actions=1,
+        repeat=3,
+    )
+    assert len(focused) == 3
+    from quoridor.domain.game import Game
+    from app.infrastructure.rl.hunt_black_wins import resolve_prefix_action
+
+    game = Game.from_initial()
+    game.play(resolve_prefix_action(game.state, ("M", 1, 4)))
+    game.play(resolve_prefix_action(game.state, ("M", 7, 4)))
+    follow = Move(direction="up", to=(2, 4))
+    expected = encode_for_viewer(follow, game.state.black, "black")
+    assert {item.action for item in focused} == {expected}
+
+
+def test_load_sheet_texts_filters_stem(tmp_path: Path) -> None:
+    from app.infrastructure.rl.dagger_losses import load_sheet_texts
+
+    (tmp_path / "black_win_001_dagger-black-p43-race_error-n6_r0.txt").write_text(
+        "scoresheet=M(1, 4)\n", encoding="utf-8"
+    )
+    (tmp_path / "black_win_007_dagger-black-p39-race_error-n2_r0.txt").write_text(
+        "scoresheet=M(2, 4)\n", encoding="utf-8"
+    )
+    loaded = load_sheet_texts(tmp_path, stem_contains="p43-race_error")
+    assert loaded == ["scoresheet=M(1, 4)\n"]
+
+
 def test_load_hard_loss_texts_accepts_comma_dirs(tmp_path: Path) -> None:
     from app.infrastructure.rl.dagger_losses import load_hard_loss_texts
 

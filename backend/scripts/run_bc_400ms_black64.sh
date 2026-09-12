@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Resume the ply-43 zip and teach the next race correction (M(3,2) at ply 49).
+# Resume the ply-49 zip and clone the p43 hunt suffix (M(4,2) then blocking walls).
 set -euo pipefail
 cd /home/ubuntu/quoridor/backend
 source .venv/bin/activate
@@ -7,11 +7,11 @@ export PYTHONUNBUFFERED=1
 export QUORIDOR_SECOND_PLAYER_OBS_BIT=true
 OUT_DIR="${OUT_DIR:-../models/finetune_bw_black64}"
 WHITE_SHEETS="artifacts/white_wins_vs_400ms/pawn_first"
-# Hunt sheets taught V(4,3) at ply 41 and skipped the M(2,0) state. Labels only.
+# Full hunt games taught V(4,3) at ply 41. Use p43 suffix labels only.
 BLACK_SHEETS="artifacts/black_wins_vs_400ms/pawn_first"
-# Keep ply 41/43 labels from the 64-move dump; add ply 49 from the n=16 60-move dump.
 LOSS_DIRS="artifacts/hard_losses_sidebit,artifacts/black64_eval_n16"
-RESUME="${RESUME:-../models/finetune_bw_black64/model_ply43.zip}"
+FOLLOW_SHEETS="artifacts/black_wins_vs_400ms/black64"
+RESUME="${RESUME:-../models/finetune_bw_black64/model_ply49.zip}"
 if [[ ! -f "$RESUME" && -f ../models/finetune_bw_black64/model.zip ]]; then
   cp -f ../models/finetune_bw_black64/model.zip "$RESUME"
 fi
@@ -36,6 +36,11 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --dagger-uncovered-colors black \
   --dagger-uncovered-hold-repeat 256 \
   --dagger-uncovered-repeat 512 \
+  --dagger-follow-sheets "$FOLLOW_SHEETS" \
+  --dagger-follow-stem p43-race_error \
+  --dagger-follow-repeat 256 \
+  --dagger-follow-max 8 \
+  --dagger-follow-colors black \
   --bc-only \
   --curriculum "" \
   --opponent normal \

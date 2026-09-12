@@ -165,6 +165,23 @@ def main() -> None:
             f"Black ply49 M(3,0) softmax={_mass(probs49, from49, 'black', retreat):.4f}"
         )
 
+    loss64_next = ROOT.parent / "artifacts/black64_eval_p49/game_001_black_loss_64.txt"
+    if not loss64_next.is_file():
+        loss64_next = ROOT / "artifacts/black64_eval_p49/game_001_black_loss_64.txt"
+    if loss64_next.is_file():
+        game = _replay(loss64_next.read_text(encoding="utf-8"), 50)
+        assert game.state.current_player == "black"
+        hunt = Move(direction="up", to=(4, 2))
+        side = Move(direction="right", to=(3, 3))
+        probs51, _legal51, from51 = _probs(model, game.state, "black")
+        print(
+            f"Black ply51 M(4,2) softmax={_mass(probs51, from51, 'black', hunt):.4f} "
+            f"argmax={int(probs51.argmax())}"
+        )
+        print(
+            f"Black ply51 M(3,3) softmax={_mass(probs51, from51, 'black', side):.4f}"
+        )
+
 
 if __name__ == "__main__":
     main()

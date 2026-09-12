@@ -26,9 +26,11 @@ from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
 from app.infrastructure.rl.train_notify import notify_training_finished
 from app.infrastructure.rl.dagger_losses import (
     load_hard_loss_texts,
+    load_sheet_texts,
     teacher_focus_transitions,
     uncovered_hold_focus_transitions,
     uncovered_race_focus_transitions,
+    uncovered_sheet_follow_transitions,
 )
 from app.infrastructure.rl.white_demonstrations import (
     DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
@@ -880,6 +882,36 @@ def main() -> None:
         help="Comma-separated colors for uncovered hold/error repeats",
     )
     parser.add_argument(
+        "--dagger-follow-sheets",
+        type=str,
+        default=None,
+        help="Win scoresheet dir(s) whose uncovered suffix is cloned (comma-separated)",
+    )
+    parser.add_argument(
+        "--dagger-follow-stem",
+        type=str,
+        default=None,
+        help="Keep only follow-sheet filenames containing this stem",
+    )
+    parser.add_argument(
+        "--dagger-follow-repeat",
+        type=int,
+        default=0,
+        help="Copies of each unique uncovered-suffix sheet action (0 disables)",
+    )
+    parser.add_argument(
+        "--dagger-follow-max",
+        type=int,
+        default=8,
+        help="Max Hard actions to clone after the first uncovered ply",
+    )
+    parser.add_argument(
+        "--dagger-follow-colors",
+        type=str,
+        default="black",
+        help="Comma-separated colors for --dagger-follow-repeat",
+    )
+    parser.add_argument(
         "--agent-white-prob",
         type=float,
         default=None,
@@ -1090,10 +1122,16 @@ def main() -> None:
                                 f"Black-win BC failed: no first-player wins in {black_demo_scoresheets}"
                             )
                     demos = list(white_demos) + list(black_demos)
-                    if args.dagger_loss_dir and (
-                        args.dagger_focus_repeat > 0
-                        or args.dagger_uncovered_repeat > 0
-                        or args.dagger_uncovered_hold_repeat > 0
+                    if (
+                        args.dagger_loss_dir
+                        and (
+                            args.dagger_focus_repeat > 0
+                            or args.dagger_uncovered_repeat > 0
+                            or args.dagger_uncovered_hold_repeat > 0
+                        )
+                    ) or (
+                        args.dagger_follow_sheets
+                        and args.dagger_follow_repeat > 0
                     ):
                         book = teacher_book
                         if book is None:
@@ -1103,62 +1141,92 @@ def main() -> None:
                                 black_prefer_stem=args.black_demo_upsample_stem,
                                 white_prefer_stem=args.white_demo_upsample_stem,
                             )
-                        loss_dir = args.dagger_loss_dir
-                        focus_colors = {
-                            part.strip()
-                            for part in args.dagger_focus_colors.split(",")
-                            if part.strip()
-                        }
-                        uncovered_colors = {
-                            part.strip()
-                            for part in args.dagger_uncovered_colors.split(",")
-                            if part.strip()
-                        }
                         focus = []
-                        for color in ("white", "black"):
-                            texts = load_hard_loss_texts(loss_dir, color)
-                            if args.dagger_focus_repeat > 0 and color in focus_colors:
-                                added = teacher_focus_transitions(
-                                    texts,
+                        if args.dagger_loss_dir:
+                            loss_dir = args.dagger_loss_dir
+                            focus_colors = {
+                                part.strip()
+                                for part in args.dagger_focus_colors.split(",")
+                                if part.strip()
+                            }
+                            uncovered_colors = {
+                                part.strip()
+                                for part in args.dagger_uncovered_colors.split(",")
+                                if part.strip()
+                            }
+                            for color in ("white", "black"):
+                                texts = load_hard_loss_texts(loss_dir, color)
+                                if args.dagger_focus_repeat > 0 and color in focus_colors:
+                                    added = teacher_focus_transitions(
+                                        texts,
+                                        book,
+                                        color,
+                                        repeat=args.dagger_focus_repeat,
+                                    )
+                                    logger.info(
+                                        "DAgger focus %s: transitions=%d repeat=%d",
+                                        color,
+                                        len(added),
+                                        args.dagger_focus_repeat,
+                                    )
+                                    focus.extend(added)
+                                if color not in uncovered_colors:
+                                    continue
+                                if args.dagger_uncovered_hold_repeat > 0:
+                                    added = uncovered_hold_focus_transitions(
+                                        texts,
+                                        book,
+                                        color,
+                                        repeat=args.dagger_uncovered_hold_repeat,
+                                    )
+                                    logger.info(
+                                        "DAgger uncovered-hold %s: transitions=%d repeat=%d",
+                                        color,
+                                        len(added),
+                                        args.dagger_uncovered_hold_repeat,
+                                    )
+                                    focus.extend(added)
+                                if args.dagger_uncovered_repeat > 0:
+                                    added = uncovered_race_focus_transitions(
+                                        texts,
+                                        book,
+                                        color,
+                                        repeat=args.dagger_uncovered_repeat,
+                                    )
+                                    logger.info(
+                                        "DAgger race-error %s: transitions=%d repeat=%d",
+                                        color,
+                                        len(added),
+                                        args.dagger_uncovered_repeat,
+                                    )
+                                    focus.extend(added)
+                        if args.dagger_follow_sheets and args.dagger_follow_repeat > 0:
+                            follow_colors = {
+                                part.strip()
+                                for part in args.dagger_follow_colors.split(",")
+                                if part.strip()
+                            }
+                            follow_texts = load_sheet_texts(
+                                args.dagger_follow_sheets,
+                                stem_contains=args.dagger_follow_stem,
+                            )
+                            for color in ("white", "black"):
+                                if color not in follow_colors:
+                                    continue
+                                added = uncovered_sheet_follow_transitions(
+                                    follow_texts,
                                     book,
                                     color,
-                                    repeat=args.dagger_focus_repeat,
+                                    max_actions=args.dagger_follow_max,
+                                    repeat=args.dagger_follow_repeat,
                                 )
                                 logger.info(
-                                    "DAgger focus %s: transitions=%d repeat=%d",
+                                    "DAgger follow %s: transitions=%d repeat=%d max=%d sheets=%d",
                                     color,
                                     len(added),
-                                    args.dagger_focus_repeat,
-                                )
-                                focus.extend(added)
-                            if color not in uncovered_colors:
-                                continue
-                            if args.dagger_uncovered_hold_repeat > 0:
-                                added = uncovered_hold_focus_transitions(
-                                    texts,
-                                    book,
-                                    color,
-                                    repeat=args.dagger_uncovered_hold_repeat,
-                                )
-                                logger.info(
-                                    "DAgger uncovered-hold %s: transitions=%d repeat=%d",
-                                    color,
-                                    len(added),
-                                    args.dagger_uncovered_hold_repeat,
-                                )
-                                focus.extend(added)
-                            if args.dagger_uncovered_repeat > 0:
-                                added = uncovered_race_focus_transitions(
-                                    texts,
-                                    book,
-                                    color,
-                                    repeat=args.dagger_uncovered_repeat,
-                                )
-                                logger.info(
-                                    "DAgger race-error %s: transitions=%d repeat=%d",
-                                    color,
-                                    len(added),
-                                    args.dagger_uncovered_repeat,
+                                    args.dagger_follow_repeat,
+                                    args.dagger_follow_max,
+                                    len(follow_texts),
                                 )
                                 focus.extend(added)
                         demos.extend(focus)

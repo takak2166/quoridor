@@ -210,6 +210,68 @@ def uncovered_hold_focus_transitions(
     return out
 
 
+def load_sheet_texts(source: Path | str, *, stem_contains: str | None = None) -> list[str]:
+    texts: list[str] = []
+    for root in _loss_roots(source):
+        if not root.exists():
+            raise FileNotFoundError(f"scoresheets not found: {root}")
+        paths = sorted(root.glob("*.txt")) if root.is_dir() else [root]
+        for path in paths:
+            if not path.is_file():
+                continue
+            if stem_contains and stem_contains not in path.name:
+                continue
+            texts.append(path.read_text(encoding="utf-8"))
+    return texts
+
+
+def uncovered_sheet_follow_transitions(
+    texts: list[str],
+    book: TeacherBook,
+    hard_color: Color,
+    *,
+    max_actions: int,
+    repeat: int,
+) -> list[DemoTransition]:
+    """Label the sheet's own Hard moves after the first uncovered ply."""
+    if repeat <= 0 or max_actions <= 0:
+        return []
+    seen: set[tuple] = set()
+    out: list[DemoTransition] = []
+    for text in texts:
+        found = first_divergence(text, book, hard_color)
+        if found is None or found.reason != "uncovered":
+            continue
+        game = Game.from_initial()
+        for spec in found.prefix:
+            action = resolve_prefix_action(game.state, spec)
+            if action is None:
+                break
+            game.play(action)
+        else:
+            remaining = parse_scoresheet(text)[len(found.prefix) :]
+            recorded = 0
+            for spec in remaining:
+                action = resolve_prefix_action(game.state, spec)
+                if action is None:
+                    break
+                if game.state.current_player == hard_color:
+                    if recorded >= max_actions:
+                        break
+                    key = (hard_color, position_key(game.state))
+                    if key not in seen:
+                        seen.add(key)
+                        out.extend(
+                            [record_demo_transition(game.state, action, hard_color)]
+                            * repeat
+                        )
+                    recorded += 1
+                game.play(action)
+                if game.is_finished:
+                    break
+    return out
+
+
 def uncovered_race_focus_transitions(
     texts: list[str],
     book: TeacherBook,
