@@ -148,6 +148,23 @@ def main() -> None:
             f"Black ply43 M(2,2) softmax={_mass(probs43, from43, 'black', loop):.4f}"
         )
 
+    loss60 = ROOT / "artifacts/black64_eval_n16/game_009_black_loss_60.txt"
+    if not loss60.is_file():
+        loss60 = ROOT.parent / "artifacts/black64_eval_n16/game_009_black_loss_60.txt"
+    if loss60.is_file():
+        game = _replay(loss60.read_text(encoding="utf-8"), 48)
+        assert game.state.current_player == "black"
+        race = Move(direction="right", to=(3, 2))
+        retreat = Move(direction="left", to=(3, 0))
+        probs49, _legal49, from49 = _probs(model, game.state, "black")
+        print(
+            f"Black ply49 M(3,2) softmax={_mass(probs49, from49, 'black', race):.4f} "
+            f"argmax={int(probs49.argmax())}"
+        )
+        print(
+            f"Black ply49 M(3,0) softmax={_mass(probs49, from49, 'black', retreat):.4f}"
+        )
+
 
 if __name__ == "__main__":
     main()

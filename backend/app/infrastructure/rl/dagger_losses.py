@@ -101,14 +101,31 @@ def is_hard_loss(path: Path, text: str, hard: Color) -> bool:
     return winner != hard
 
 
-def load_hard_loss_texts(loss_dir: Path, hard: Color) -> list[str]:
+def _loss_roots(source: str | Path) -> list[Path]:
+    if isinstance(source, Path) or "," not in str(source):
+        return [Path(source)]
+    return [Path(part.strip()) for part in str(source).split(",") if part.strip()]
+
+
+def load_hard_loss_texts(loss_dir: Path | str, hard: Color) -> list[str]:
     texts: list[str] = []
-    for path in sorted(loss_dir.glob("*.txt")):
-        text = path.read_text(encoding="utf-8")
-        color = hard_color_from_sheet(path, text)
-        if color != hard:
-            continue
-        if is_hard_loss(path, text, hard):
+    seen: set[str] = set()
+    for root in _loss_roots(loss_dir):
+        if not root.exists():
+            raise FileNotFoundError(f"Hard-loss scoresheets not found: {root}")
+        paths = sorted(root.glob("*.txt")) if root.is_dir() else [root]
+        for path in paths:
+            if not path.is_file():
+                continue
+            text = path.read_text(encoding="utf-8")
+            color = hard_color_from_sheet(path, text)
+            if color != hard:
+                continue
+            if not is_hard_loss(path, text, hard):
+                continue
+            if text in seen:
+                continue
+            seen.add(text)
             texts.append(text)
     return texts
 

@@ -152,6 +152,29 @@ def test_load_hard_loss_texts_filters_by_color(tmp_path: Path) -> None:
     assert len(load_hard_loss_texts(tmp_path, "black")) == 1
 
 
+def test_load_hard_loss_texts_accepts_comma_dirs(tmp_path: Path) -> None:
+    from app.infrastructure.rl.dagger_losses import load_hard_loss_texts
+
+    first = tmp_path / "old"
+    second = tmp_path / "new"
+    first.mkdir()
+    second.mkdir()
+    (first / "game_001_black_loss_64.txt").write_text(
+        "tag=eval-black-loss\nwinner=white\nscoresheet=M(1, 4),M(7, 4)\n",
+        encoding="utf-8",
+    )
+    (second / "game_009_black_loss_60.txt").write_text(
+        "tag=eval-black-loss\nwinner=white\nscoresheet=M(1, 4),M(7, 4),M(2, 4)\n",
+        encoding="utf-8",
+    )
+    (second / "dup_black_loss_64.txt").write_text(
+        "tag=eval-black-loss\nwinner=white\nscoresheet=M(1, 4),M(7, 4)\n",
+        encoding="utf-8",
+    )
+    loaded = load_hard_loss_texts(f"{first},{second}", "black")
+    assert len(loaded) == 2
+
+
 def test_policy_wall_candidate_limit_treats_non_positive_as_open() -> None:
     from app.infrastructure.ai.action_mask import policy_wall_candidate_limit
 

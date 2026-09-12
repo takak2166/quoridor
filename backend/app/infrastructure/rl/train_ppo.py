@@ -847,7 +847,7 @@ def main() -> None:
         "--dagger-loss-dir",
         type=str,
         default=None,
-        help="Hard-loss scoresheets whose first off-book ply is overweighted in BC",
+        help="Hard-loss scoresheet dir(s), comma-separated, whose first error ply is overweighted in BC",
     )
     parser.add_argument(
         "--dagger-focus-repeat",
@@ -1103,7 +1103,7 @@ def main() -> None:
                                 black_prefer_stem=args.black_demo_upsample_stem,
                                 white_prefer_stem=args.white_demo_upsample_stem,
                             )
-                        loss_dir = Path(args.dagger_loss_dir)
+                        loss_dir = args.dagger_loss_dir
                         focus_colors = {
                             part.strip()
                             for part in args.dagger_focus_colors.split(",")
