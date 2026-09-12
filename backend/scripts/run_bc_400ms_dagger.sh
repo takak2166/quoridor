@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Resume the sidebit joint BC and add DAgger wins. Keep both main lines thick.
-# Mix: pawn_first books + dagger/*.txt (comma-separated loaders).
+# Resume the sidebit joint BC and add DAgger corrections.
+# Mix: pawn_first books + unique dagger wins + off-book teacher focus.
 set -euo pipefail
 cd /home/ubuntu/quoridor/backend
 source .venv/bin/activate
@@ -17,15 +17,16 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --white-demo-wins 0 \
   --white-demo-scoresheets "$WHITE_SHEETS" \
   --white-demo-upsample 2 \
-  --white-demo-upsample-stem M_7_4_M_2_4_M_6_4,dagger \
+  --white-demo-upsample-stem M_7_4_M_2_4_M_6_4 \
   --white-demo-upsample-heavy 6 \
   --white-demo-epochs 80 \
   --black-demo-wins 0 \
   --black-demo-scoresheets "$BLACK_SHEETS" \
   --black-demo-upsample-m14 1 \
-  --black-demo-upsample-stem M14_M15_M25,dagger \
+  --black-demo-upsample-stem M14_M15_M25 \
   --black-demo-upsample-heavy 24 \
-  --black-demo-epochs 80 \
+  --dagger-loss-dir artifacts/hard_losses_sidebit \
+  --dagger-focus-repeat 256 \
   --bc-only \
   --curriculum "" \
   --opponent normal \

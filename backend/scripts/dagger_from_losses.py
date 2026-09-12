@@ -9,49 +9,13 @@ from pathlib import Path
 
 from app.infrastructure.rl.dagger_losses import (
     format_prefix_csv,
+    load_hard_loss_texts,
     unique_divergences,
     write_hunt_scoresheet,
 )
 from app.infrastructure.rl.hunt_black_wins import play_opening_vs_normal
 from app.infrastructure.rl.white_demonstrations import load_teacher_book
 from quoridor.domain.state import Color
-
-
-def _hard_color(path: Path, text: str) -> Color | None:
-    for line in text.splitlines():
-        if line.startswith("tag=eval-"):
-            parts = line.split("=", 1)[1].split("-")
-            if len(parts) >= 2 and parts[1] in ("black", "white"):
-                return parts[1]  # type: ignore[return-value]
-    name = path.name
-    if "_white_" in name:
-        return "white"
-    if "_black_" in name:
-        return "black"
-    return None
-
-
-def _is_hard_loss(path: Path, text: str, hard: Color) -> bool:
-    winner = None
-    for line in text.splitlines():
-        if line.startswith("winner="):
-            winner = line.split("=", 1)[1].strip() or None
-            break
-    if winner is None:
-        return "loss" in path.name
-    return winner != hard
-
-
-def _load_losses(loss_dir: Path, hard: Color) -> list[str]:
-    texts: list[str] = []
-    for path in sorted(loss_dir.glob("*.txt")):
-        text = path.read_text(encoding="utf-8")
-        color = _hard_color(path, text)
-        if color != hard:
-            continue
-        if _is_hard_loss(path, text, hard):
-            texts.append(text)
-    return texts
 
 
 def _hunt(
@@ -123,8 +87,8 @@ def main() -> int:
     )
     print(f"Teacher book positions={len(book.actions)}", flush=True)
 
-    white_losses = _load_losses(args.loss_dir, "white")
-    black_losses = _load_losses(args.loss_dir, "black")
+    white_losses = load_hard_loss_texts(args.loss_dir, "white")
+    black_losses = load_hard_loss_texts(args.loss_dir, "black")
     print(f"loss sheets white={len(white_losses)} black={len(black_losses)}", flush=True)
 
     white_ranked = unique_divergences(

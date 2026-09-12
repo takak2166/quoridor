@@ -12,9 +12,14 @@ from app.infrastructure.rl.hunt_black_wins import (
     parse_scoresheet,
     resolve_prefix_action,
 )
-from app.infrastructure.rl.white_demonstrations import TeacherBook, actions_match
+from app.infrastructure.rl.white_demonstrations import (
+    DemoTransition,
+    TeacherBook,
+    actions_match,
+    record_demo_transition,
+)
 from quoridor.domain.game import Game
-from quoridor.domain.state import Color
+from quoridor.domain.state import Color, position_key
 
 
 @dataclass(frozen=True)
@@ -68,6 +73,78 @@ def unique_divergences(
             counts[found.prefix] = (prev[0], prev[1] + 1)
     ranked = sorted(counts.values(), key=lambda item: (-item[1], item[0].ply, item[0].reason))
     return ranked[: max(0, limit)]
+
+
+def hard_color_from_sheet(path: Path, text: str) -> Color | None:
+    for line in text.splitlines():
+        if line.startswith("tag=eval-"):
+            parts = line.split("=", 1)[1].split("-")
+            if len(parts) >= 2 and parts[1] in ("black", "white"):
+                return parts[1]  # type: ignore[return-value]
+    name = path.name
+    if "_white_" in name:
+        return "white"
+    if "_black_" in name:
+        return "black"
+    return None
+
+
+def is_hard_loss(path: Path, text: str, hard: Color) -> bool:
+    winner = None
+    for line in text.splitlines():
+        if line.startswith("winner="):
+            winner = line.split("=", 1)[1].strip() or None
+            break
+    if winner is None:
+        return "loss" in path.name
+    return winner != hard
+
+
+def load_hard_loss_texts(loss_dir: Path, hard: Color) -> list[str]:
+    texts: list[str] = []
+    for path in sorted(loss_dir.glob("*.txt")):
+        text = path.read_text(encoding="utf-8")
+        color = hard_color_from_sheet(path, text)
+        if color != hard:
+            continue
+        if is_hard_loss(path, text, hard):
+            texts.append(text)
+    return texts
+
+
+def teacher_focus_transitions(
+    texts: list[str],
+    book: TeacherBook,
+    hard_color: Color,
+    *,
+    repeat: int,
+) -> list[DemoTransition]:
+    """Repeat the teacher action at each unique off-book divergence."""
+    if repeat <= 0:
+        return []
+    seen: set[tuple] = set()
+    out: list[DemoTransition] = []
+    for text in texts:
+        found = first_divergence(text, book, hard_color)
+        if found is None or found.reason != "off_book":
+            continue
+        game = Game.from_initial()
+        for spec in found.prefix:
+            action = resolve_prefix_action(game.state, spec)
+            if action is None:
+                break
+            game.play(action)
+        else:
+            teacher = book.action_for(game.state, hard_color)
+            if teacher is None:
+                continue
+            key = (hard_color, position_key(game.state))
+            if key in seen:
+                continue
+            seen.add(key)
+            transition = record_demo_transition(game.state, teacher, hard_color)
+            out.extend([transition] * repeat)
+    return out
 
 
 def format_prefix_csv(prefix: tuple[PrefixSpec, ...]) -> str:

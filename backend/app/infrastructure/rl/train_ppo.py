@@ -24,6 +24,10 @@ from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 from app.infrastructure.rl.env import QuoridorEnv
 from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
 from app.infrastructure.rl.train_notify import notify_training_finished
+from app.infrastructure.rl.dagger_losses import (
+    load_hard_loss_texts,
+    teacher_focus_transitions,
+)
 from app.infrastructure.rl.white_demonstrations import (
     DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
     DEFAULT_WHITE_DEMO_EPOCHS,
@@ -838,6 +842,18 @@ def main() -> None:
         help="Save after behavior cloning and exit (skip PPO)",
     )
     parser.add_argument(
+        "--dagger-loss-dir",
+        type=str,
+        default=None,
+        help="Hard-loss scoresheets whose first off-book ply is overweighted in BC",
+    )
+    parser.add_argument(
+        "--dagger-focus-repeat",
+        type=int,
+        default=0,
+        help="Copies of each unique off-book teacher transition (0 disables)",
+    )
+    parser.add_argument(
         "--agent-white-prob",
         type=float,
         default=None,
@@ -1048,6 +1064,32 @@ def main() -> None:
                                 f"Black-win BC failed: no first-player wins in {black_demo_scoresheets}"
                             )
                     demos = list(white_demos) + list(black_demos)
+                    if args.dagger_loss_dir and args.dagger_focus_repeat > 0:
+                        book = teacher_book
+                        if book is None:
+                            book = load_teacher_book(
+                                black_source=black_demo_scoresheets,
+                                white_source=white_demo_scoresheets,
+                                black_prefer_stem=args.black_demo_upsample_stem,
+                                white_prefer_stem=args.white_demo_upsample_stem,
+                            )
+                        loss_dir = Path(args.dagger_loss_dir)
+                        focus = []
+                        for color in ("white", "black"):
+                            added = teacher_focus_transitions(
+                                load_hard_loss_texts(loss_dir, color),
+                                book,
+                                color,
+                                repeat=args.dagger_focus_repeat,
+                            )
+                            logger.info(
+                                "DAgger focus %s: transitions=%d repeat=%d",
+                                color,
+                                len(added),
+                                args.dagger_focus_repeat,
+                            )
+                            focus.extend(added)
+                        demos.extend(focus)
                     if not demos:
                         raise SystemExit("BC failed: no demonstration transitions")
                     clone_epochs = max(args.white_demo_epochs, args.black_demo_epochs)

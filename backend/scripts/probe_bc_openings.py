@@ -96,6 +96,20 @@ def main() -> None:
             f"argmax={int(probs_b.argmax())}"
         )
 
+    if white_sheet.is_file():
+        game = _replay(white_sheet.read_text(encoding="utf-8"), 13)
+        assert game.state.current_player == "white"
+        teacher = WallSlot(orientation="horizontal", row=4, col=0)
+        hard = WallSlot(orientation="vertical", row=5, col=0)
+        probs14, _legal14, from14 = _probs(model, game.state, "white")
+        print(
+            f"White ply14 H(4,0) softmax={_mass(probs14, from14, 'white', teacher):.4f} "
+            f"argmax={int(probs14.argmax())}"
+        )
+        print(
+            f"White ply14 V(5,0) softmax={_mass(probs14, from14, 'white', hard):.4f}"
+        )
+
 
 if __name__ == "__main__":
     main()

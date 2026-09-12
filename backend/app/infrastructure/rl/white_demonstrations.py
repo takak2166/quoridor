@@ -215,7 +215,8 @@ def _random_legal_action(state: QuoridorState, rng: random.Random) -> Action:
     return rng.choice(legal)
 
 
-def _record_transition(state: QuoridorState, action: Action, viewer: Color) -> DemoTransition:
+def record_demo_transition(state: QuoridorState, action: Action, viewer: Color) -> DemoTransition:
+    """Encode one (state, action) pair in the viewer's agent frame."""
     from_pos = state.pawn(viewer)
     legal = get_legal_actions(state)
     return DemoTransition(
@@ -223,6 +224,10 @@ def _record_transition(state: QuoridorState, action: Action, viewer: Color) -> D
         action=encode_for_viewer(action, from_pos, viewer),
         mask=legal_action_mask_agent_frame(legal, viewer, from_pos=from_pos),
     )
+
+
+def _record_transition(state: QuoridorState, action: Action, viewer: Color) -> DemoTransition:
+    return record_demo_transition(state, action, viewer)
 
 
 def _record_white_transition(state: QuoridorState, action: Action) -> DemoTransition:

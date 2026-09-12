@@ -54,6 +54,41 @@ def test_unique_divergences_ranks_by_count() -> None:
     assert ranked[1][0].prefix == ()
 
 
+def test_teacher_focus_repeats_unique_off_book_only() -> None:
+    from app.infrastructure.rl.dagger_losses import teacher_focus_transitions
+    from app.infrastructure.rl.white_demonstrations import TeacherBook
+    from quoridor.agent_frame import encode_for_viewer
+
+    opening = initial_state()
+    teacher = Move(direction="up", to=(1, 4))
+    book = TeacherBook(actions={("black", position_key(opening)): teacher})
+    texts = [
+        "scoresheet=M(0, 5),M(7, 4)",
+        "scoresheet=M(0, 5),M(7, 4)",
+        "scoresheet=M(1, 4),M(7, 4)",
+    ]
+    focused = teacher_focus_transitions(texts, book, "black", repeat=4)
+    assert len(focused) == 4
+    expected = encode_for_viewer(teacher, opening.black, "black")
+    assert {item.action for item in focused} == {expected}
+
+
+def test_load_hard_loss_texts_filters_by_color(tmp_path: Path) -> None:
+    from app.infrastructure.rl.dagger_losses import load_hard_loss_texts
+
+    (tmp_path / "game_001_white_loss_49.txt").write_text(
+        "tag=eval-white-loss\nwinner=black\nscoresheet=M(1, 4),M(7, 4)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "game_002_black_loss_64.txt").write_text(
+        "tag=eval-black-loss\nwinner=white\nscoresheet=M(1, 4),M(7, 4)\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "notes.txt").write_text("not a loss\n", encoding="utf-8")
+    assert len(load_hard_loss_texts(tmp_path, "white")) == 1
+    assert len(load_hard_loss_texts(tmp_path, "black")) == 1
+
+
 def test_teacher_book_and_black_load_accept_comma_paths(tmp_path: Path) -> None:
     fixture = Path(__file__).parent / "fixtures" / "black_win_vs_normal_m14.txt"
     other = tmp_path / "extra"
