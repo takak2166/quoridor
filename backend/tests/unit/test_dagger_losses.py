@@ -54,6 +54,54 @@ def test_unique_divergences_ranks_by_count() -> None:
     assert ranked[1][0].prefix == ()
 
 
+def test_first_uncovered_race_error_skips_book_then_flags_race() -> None:
+    from app.infrastructure.rl.dagger_losses import first_uncovered_race_error
+    from app.infrastructure.rl.white_demonstrations import TeacherBook, greedy_race_action
+    from quoridor.domain.game import Game
+
+    opening = initial_state()
+    book = TeacherBook(actions={("black", position_key(opening)): Move(direction="up", to=(1, 4))})
+    # Off-book at ply 1 is ignored: only uncovered race errors count.
+    assert first_uncovered_race_error("scoresheet=M(0, 5),M(7, 4)", book, "black") is None
+
+    found = first_uncovered_race_error("scoresheet=M(1, 4),M(7, 4),M(1, 3)", book, "black")
+    assert found is not None
+    assert found.reason == "race_error"
+    assert found.ply == 3
+    assert found.prefix == (("M", 1, 4), ("M", 7, 4))
+    game = Game.from_initial()
+    from app.infrastructure.rl.hunt_black_wins import resolve_prefix_action
+
+    game.play(resolve_prefix_action(game.state, ("M", 1, 4)))
+    game.play(resolve_prefix_action(game.state, ("M", 7, 4)))
+    race = greedy_race_action(game.state, "black")
+    assert getattr(race, "to", None) != (1, 3)
+
+
+def test_uncovered_race_focus_repeats_unique_error() -> None:
+    from app.infrastructure.rl.dagger_losses import uncovered_race_focus_transitions
+    from app.infrastructure.rl.white_demonstrations import TeacherBook, greedy_race_action
+    from quoridor.agent_frame import encode_for_viewer
+    from quoridor.domain.game import Game
+
+    opening = initial_state()
+    book = TeacherBook(actions={("black", position_key(opening)): Move(direction="up", to=(1, 4))})
+    texts = [
+        "scoresheet=M(1, 4),M(7, 4),M(1, 3)",
+        "scoresheet=M(1, 4),M(7, 4),M(1, 3)",
+    ]
+    focused = uncovered_race_focus_transitions(texts, book, "black", repeat=3)
+    assert len(focused) == 3
+    game = Game.from_initial()
+    from app.infrastructure.rl.hunt_black_wins import resolve_prefix_action
+
+    game.play(resolve_prefix_action(game.state, ("M", 1, 4)))
+    game.play(resolve_prefix_action(game.state, ("M", 7, 4)))
+    race = greedy_race_action(game.state, "black")
+    expected = encode_for_viewer(race, game.state.black, "black")
+    assert {item.action for item in focused} == {expected}
+
+
 def test_teacher_focus_repeats_unique_off_book_only() -> None:
     from app.infrastructure.rl.dagger_losses import teacher_focus_transitions
     from app.infrastructure.rl.white_demonstrations import TeacherBook

@@ -121,6 +121,21 @@ def main() -> None:
             f"White ply14 V(5,0) softmax={_mass(probs14, from14, 'white', hard):.4f}"
         )
 
+    loss64 = ROOT / "artifacts/hard_losses_sidebit/game_003_black_loss_64.txt"
+    if loss64.is_file():
+        game = _replay(loss64.read_text(encoding="utf-8"), 42)
+        assert game.state.current_player == "black"
+        race = Move(direction="left", to=(2, 0))
+        loop = Move(direction="right", to=(2, 2))
+        probs43, _legal43, from43 = _probs(model, game.state, "black")
+        print(
+            f"Black ply43 M(2,0) softmax={_mass(probs43, from43, 'black', race):.4f} "
+            f"argmax={int(probs43.argmax())}"
+        )
+        print(
+            f"Black ply43 M(2,2) softmax={_mass(probs43, from43, 'black', loop):.4f}"
+        )
+
 
 if __name__ == "__main__":
     main()

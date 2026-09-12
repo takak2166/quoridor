@@ -11,6 +11,7 @@ from app.infrastructure.rl.dagger_losses import (
     format_prefix_csv,
     load_hard_loss_texts,
     unique_divergences,
+    unique_race_errors,
     write_hunt_scoresheet,
 )
 from app.infrastructure.rl.hunt_black_wins import play_opening_vs_normal
@@ -77,6 +78,12 @@ def main() -> int:
     parser.add_argument("--max-white-wins", type=int, default=12)
     parser.add_argument("--max-black-wins", type=int, default=8)
     parser.add_argument("--max-moves", type=int, default=200)
+    parser.add_argument(
+        "--black-race-errors",
+        action="store_true",
+        help="Hunt Black from first uncovered greedy-race errors (64-move loop)",
+    )
+    parser.add_argument("--skip-white", action="store_true")
     args = parser.parse_args()
 
     book = load_teacher_book(
@@ -91,24 +98,33 @@ def main() -> int:
     black_losses = load_hard_loss_texts(args.loss_dir, "black")
     print(f"loss sheets white={len(white_losses)} black={len(black_losses)}", flush=True)
 
-    white_ranked = unique_divergences(
-        white_losses, book, "white", limit=args.max_white_prefixes
+    white_ranked = (
+        []
+        if args.skip_white
+        else unique_divergences(white_losses, book, "white", limit=args.max_white_prefixes)
     )
-    black_ranked = unique_divergences(
-        black_losses, book, "black", limit=args.max_black_prefixes
-    )
+    if args.black_race_errors:
+        black_ranked = unique_race_errors(
+            black_losses, book, "black", limit=args.max_black_prefixes
+        )
+    else:
+        black_ranked = unique_divergences(
+            black_losses, book, "black", limit=args.max_black_prefixes
+        )
     print(f"unique prefixes white={len(white_ranked)} black={len(black_ranked)}", flush=True)
 
-    white_wins = _hunt(
-        ranked=white_ranked,
-        target="white",
-        black_kind="factory",
-        white_kind="node-limited",
-        repeats=args.repeats,
-        max_moves=args.max_moves,
-        max_wins=args.max_white_wins,
-        out_dir=args.white_out,
-    )
+    white_wins = 0
+    if white_ranked:
+        white_wins = _hunt(
+            ranked=white_ranked,
+            target="white",
+            black_kind="factory",
+            white_kind="node-limited",
+            repeats=args.repeats,
+            max_moves=args.max_moves,
+            max_wins=args.max_white_wins,
+            out_dir=args.white_out,
+        )
     black_wins = _hunt(
         ranked=black_ranked,
         target="black",

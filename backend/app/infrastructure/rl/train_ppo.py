@@ -27,6 +27,7 @@ from app.infrastructure.rl.train_notify import notify_training_finished
 from app.infrastructure.rl.dagger_losses import (
     load_hard_loss_texts,
     teacher_focus_transitions,
+    uncovered_race_focus_transitions,
 )
 from app.infrastructure.rl.white_demonstrations import (
     DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
@@ -854,6 +855,12 @@ def main() -> None:
         help="Copies of each unique off-book teacher transition (0 disables)",
     )
     parser.add_argument(
+        "--dagger-uncovered-repeat",
+        type=int,
+        default=0,
+        help="Copies of each unique uncovered greedy-race correction (0 disables)",
+    )
+    parser.add_argument(
         "--agent-white-prob",
         type=float,
         default=None,
@@ -1064,7 +1071,9 @@ def main() -> None:
                                 f"Black-win BC failed: no first-player wins in {black_demo_scoresheets}"
                             )
                     demos = list(white_demos) + list(black_demos)
-                    if args.dagger_loss_dir and args.dagger_focus_repeat > 0:
+                    if args.dagger_loss_dir and (
+                        args.dagger_focus_repeat > 0 or args.dagger_uncovered_repeat > 0
+                    ):
                         book = teacher_book
                         if book is None:
                             book = load_teacher_book(
@@ -1076,19 +1085,35 @@ def main() -> None:
                         loss_dir = Path(args.dagger_loss_dir)
                         focus = []
                         for color in ("white", "black"):
-                            added = teacher_focus_transitions(
-                                load_hard_loss_texts(loss_dir, color),
-                                book,
-                                color,
-                                repeat=args.dagger_focus_repeat,
-                            )
-                            logger.info(
-                                "DAgger focus %s: transitions=%d repeat=%d",
-                                color,
-                                len(added),
-                                args.dagger_focus_repeat,
-                            )
-                            focus.extend(added)
+                            texts = load_hard_loss_texts(loss_dir, color)
+                            if args.dagger_focus_repeat > 0:
+                                added = teacher_focus_transitions(
+                                    texts,
+                                    book,
+                                    color,
+                                    repeat=args.dagger_focus_repeat,
+                                )
+                                logger.info(
+                                    "DAgger focus %s: transitions=%d repeat=%d",
+                                    color,
+                                    len(added),
+                                    args.dagger_focus_repeat,
+                                )
+                                focus.extend(added)
+                            if args.dagger_uncovered_repeat > 0:
+                                added = uncovered_race_focus_transitions(
+                                    texts,
+                                    book,
+                                    color,
+                                    repeat=args.dagger_uncovered_repeat,
+                                )
+                                logger.info(
+                                    "DAgger race-error %s: transitions=%d repeat=%d",
+                                    color,
+                                    len(added),
+                                    args.dagger_uncovered_repeat,
+                                )
+                                focus.extend(added)
                         demos.extend(focus)
                     if not demos:
                         raise SystemExit("BC failed: no demonstration transitions")

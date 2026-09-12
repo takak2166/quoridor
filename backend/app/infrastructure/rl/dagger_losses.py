@@ -16,6 +16,7 @@ from app.infrastructure.rl.white_demonstrations import (
     DemoTransition,
     TeacherBook,
     actions_match,
+    greedy_race_action,
     record_demo_transition,
 )
 from quoridor.domain.game import Game
@@ -110,6 +111,86 @@ def load_hard_loss_texts(loss_dir: Path, hard: Color) -> list[str]:
         if is_hard_loss(path, text, hard):
             texts.append(text)
     return texts
+
+
+def first_uncovered_race_error(
+    text: str, book: TeacherBook, hard_color: Color
+) -> Divergence | None:
+    """Prefix is every ply before Hard's first uncovered move that is not greedy-race."""
+    specs = tuple(parse_scoresheet(text))
+    if not specs:
+        return None
+    game = Game.from_initial()
+    prefix: list[PrefixSpec] = []
+    for ply, spec in enumerate(specs, start=1):
+        action = resolve_prefix_action(game.state, spec)
+        if action is None:
+            return Divergence(hard_color, ply, tuple(prefix), "illegal")
+        if game.state.current_player == hard_color:
+            teacher = book.action_for(game.state, hard_color)
+            if teacher is None:
+                race = greedy_race_action(game.state, hard_color)
+                if not actions_match(race, action):
+                    return Divergence(hard_color, ply, tuple(prefix), "race_error")
+        game.play(action)
+        prefix.append(spec)
+        if game.is_finished:
+            break
+    return None
+
+
+def unique_race_errors(
+    texts: list[str],
+    book: TeacherBook,
+    hard_color: Color,
+    *,
+    limit: int,
+) -> list[tuple[Divergence, int]]:
+    counts: dict[tuple[PrefixSpec, ...], tuple[Divergence, int]] = {}
+    for text in texts:
+        found = first_uncovered_race_error(text, book, hard_color)
+        if found is None:
+            continue
+        prev = counts.get(found.prefix)
+        if prev is None:
+            counts[found.prefix] = (found, 1)
+        else:
+            counts[found.prefix] = (prev[0], prev[1] + 1)
+    ranked = sorted(counts.values(), key=lambda item: (-item[1], item[0].ply, item[0].reason))
+    return ranked[: max(0, limit)]
+
+
+def uncovered_race_focus_transitions(
+    texts: list[str],
+    book: TeacherBook,
+    hard_color: Color,
+    *,
+    repeat: int,
+) -> list[DemoTransition]:
+    """Repeat the greedy-race action at each unique uncovered race error."""
+    if repeat <= 0:
+        return []
+    seen: set[tuple] = set()
+    out: list[DemoTransition] = []
+    for text in texts:
+        found = first_uncovered_race_error(text, book, hard_color)
+        if found is None or found.reason != "race_error":
+            continue
+        game = Game.from_initial()
+        for spec in found.prefix:
+            action = resolve_prefix_action(game.state, spec)
+            if action is None:
+                break
+            game.play(action)
+        else:
+            race = greedy_race_action(game.state, hard_color)
+            key = (hard_color, position_key(game.state))
+            if key in seen:
+                continue
+            seen.add(key)
+            transition = record_demo_transition(game.state, race, hard_color)
+            out.extend([transition] * repeat)
+    return out
 
 
 def teacher_focus_transitions(
