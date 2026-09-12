@@ -137,8 +137,14 @@ def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=["asymmetric", "white-first", "white-pawn-second"],
+        choices=["asymmetric", "white-first", "white-pawn-second", "prefix"],
         default="asymmetric",
+    )
+    parser.add_argument(
+        "--prefix",
+        type=str,
+        default=None,
+        help="Forced opening scoresheet for --mode prefix",
     )
     parser.add_argument("--black-kind", choices=BLACK_KINDS, default="factory")
     parser.add_argument("--white-kind", choices=WHITE_KINDS, default="greedy")
@@ -172,6 +178,13 @@ def main() -> int:
         payloads = _asymmetric_payloads(args.max_moves, args.black_kind, args.white_kind)
     elif args.mode == "white-first":
         payloads = _white_first_payloads(args.max_moves, args.black_kind, args.white_kind)
+    elif args.mode == "prefix":
+        from app.infrastructure.rl.dagger_losses import prefix_from_csv
+
+        if not args.prefix:
+            raise SystemExit("--mode prefix requires --prefix")
+        specs = prefix_from_csv(args.prefix)
+        payloads = [_payload(specs, args.max_moves, args.black_kind, args.white_kind, "prefix")]
     else:
         payloads = _white_pawn_second_payloads(args.max_moves, args.black_kind, args.white_kind)
 

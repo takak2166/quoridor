@@ -110,13 +110,30 @@ class TeacherBook:
         return teacher is not None and actions_match(teacher, action)
 
 
+def _scoresheet_roots(source: str | Path) -> list[Path]:
+    if isinstance(source, Path) or "," not in str(source):
+        return [Path(source)]
+    return [Path(part.strip()) for part in str(source).split(",") if part.strip()]
+
+
 def _scoresheet_files(source: str | Path) -> list[Path]:
-    path = Path(source)
-    if path.is_dir():
-        return sorted(child for child in path.glob("*.txt") if child.is_file())
-    if path.is_file():
-        return [path]
-    raise FileNotFoundError(f"scoresheets not found: {path}")
+    files: list[Path] = []
+    for path in _scoresheet_roots(source):
+        if path.is_dir():
+            files.extend(sorted(child for child in path.glob("*.txt") if child.is_file()))
+        elif path.is_file():
+            files.append(path)
+        else:
+            raise FileNotFoundError(f"scoresheets not found: {path}")
+    return files
+
+
+def _stem_keys(upsample_stem: str | None) -> tuple[str, ...]:
+    return tuple(part.strip() for part in (upsample_stem or "").split(",") if part.strip())
+
+
+def _stem_hit(name: str, keys: tuple[str, ...]) -> bool:
+    return any(key in name for key in keys)
 
 
 def _looks_like_scoresheet(text: str) -> bool:
@@ -246,20 +263,18 @@ def load_black_win_transitions(
     """Load unique Black-win scoresheets from a file or directory of ``*.txt``."""
     from app.infrastructure.rl.hunt_black_wins import parse_scoresheet
 
-    path = Path(source)
-    if path.is_dir():
-        files = sorted(child for child in path.glob("*.txt") if child.is_file())
-    elif path.is_file():
-        files = [path]
-    else:
-        raise FileNotFoundError(f"black-win scoresheets not found: {path}")
+    try:
+        files = _scoresheet_files(source)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"black-win scoresheets not found: {source}") from exc
+    path = Path(str(source).split(",", 1)[0])
 
     seen: set[tuple] = set()
     collected: list[DemoTransition] = []
     m14: list[DemoTransition] = []
     heavy: list[DemoTransition] = []
     games = 0
-    stem_key = (upsample_stem or "").strip()
+    stem_keys = _stem_keys(upsample_stem)
     for file in files:
         text = file.read_text(encoding="utf-8")
         if "scoresheet=" not in text:
@@ -277,7 +292,7 @@ def load_black_win_transitions(
         games += 1
         if specs[0] == ("M", 1, 4):
             m14.extend(transitions)
-        if stem_key and stem_key in file.stem:
+        if _stem_hit(file.stem, stem_keys):
             heavy.extend(transitions)
 
     extra = max(0, int(upsample_m14) - 1)
@@ -294,7 +309,7 @@ def load_black_win_transitions(
         len(collected),
         len(m14),
         max(1, int(upsample_m14)),
-        stem_key or "-",
+        ",".join(stem_keys) or "-",
         max(1, int(upsample_heavy)),
         path,
     )
@@ -344,19 +359,17 @@ def load_white_win_transitions(
     """Load unique White-win scoresheets from a file or directory of ``*.txt``."""
     from app.infrastructure.rl.hunt_black_wins import parse_scoresheet
 
-    path = Path(source)
-    if path.is_dir():
-        files = sorted(child for child in path.glob("*.txt") if child.is_file())
-    elif path.is_file():
-        files = [path]
-    else:
-        raise FileNotFoundError(f"white-win scoresheets not found: {path}")
+    try:
+        files = _scoresheet_files(source)
+    except FileNotFoundError as exc:
+        raise FileNotFoundError(f"white-win scoresheets not found: {source}") from exc
+    path = Path(str(source).split(",", 1)[0])
 
     seen: set[tuple] = set()
     collected: list[DemoTransition] = []
     heavy: list[DemoTransition] = []
     games = 0
-    stem_key = (upsample_stem or "").strip()
+    stem_keys = _stem_keys(upsample_stem)
     for file in files:
         text = file.read_text(encoding="utf-8")
         if "scoresheet=" not in text:
@@ -375,7 +388,7 @@ def load_white_win_transitions(
         seen.add(specs)
         collected.extend(transitions)
         games += 1
-        if stem_key and stem_key in file.stem:
+        if _stem_hit(file.stem, stem_keys):
             heavy.extend(transitions)
 
     extra = max(0, int(upsample) - 1)
@@ -391,7 +404,7 @@ def load_white_win_transitions(
         games,
         len(collected),
         max(1, int(upsample)),
-        stem_key or "-",
+        ",".join(stem_keys) or "-",
         max(1, int(upsample_heavy)),
         path,
     )

@@ -1,0 +1,68 @@
+from pathlib import Path
+
+from app.infrastructure.rl.dagger_losses import first_divergence, prefix_from_csv, unique_divergences
+from app.infrastructure.rl.white_demonstrations import load_teacher_book
+from quoridor.domain.actions import Move
+from quoridor.domain.state import initial_state, position_key
+
+
+def test_prefix_from_csv_roundtrip() -> None:
+    assert prefix_from_csv("") == ()
+    assert prefix_from_csv("M(1, 4),M(7, 4)") == (("M", 1, 4), ("M", 7, 4))
+
+
+def test_first_divergence_uncovered_on_empty_book() -> None:
+    from app.infrastructure.rl.white_demonstrations import TeacherBook
+
+    book = TeacherBook(actions={})
+    found = first_divergence("scoresheet=M(1, 4),M(7, 4)", book, "black")
+    assert found is not None
+    assert found.reason == "uncovered"
+    assert found.ply == 1
+    assert found.prefix == ()
+
+
+def test_first_divergence_off_book_after_teacher_opening() -> None:
+    from app.infrastructure.rl.white_demonstrations import TeacherBook
+
+    opening = initial_state()
+    book = TeacherBook(
+        actions={("black", position_key(opening)): Move(direction="up", to=(1, 4))}
+    )
+    found = first_divergence("scoresheet=M(0, 5),M(7, 4)", book, "black")
+    assert found is not None
+    assert found.reason == "off_book"
+    assert found.prefix == ()
+
+
+def test_unique_divergences_ranks_by_count() -> None:
+    from app.infrastructure.rl.white_demonstrations import TeacherBook
+
+    opening = initial_state()
+    book = TeacherBook(
+        actions={("black", position_key(opening)): Move(direction="up", to=(1, 4))}
+    )
+    texts = [
+        "scoresheet=M(1, 4),M(7, 4),M(1, 5)",
+        "scoresheet=M(1, 4),M(7, 4),M(1, 5)",
+        "scoresheet=M(0, 5),M(7, 4)",
+    ]
+    ranked = unique_divergences(texts, book, "black", limit=2)
+    assert ranked[0][1] == 2
+    assert ranked[0][0].prefix == (("M", 1, 4), ("M", 7, 4))
+    assert ranked[1][1] == 1
+    assert ranked[1][0].prefix == ()
+
+
+def test_teacher_book_and_black_load_accept_comma_paths(tmp_path: Path) -> None:
+    fixture = Path(__file__).parent / "fixtures" / "black_win_vs_normal_m14.txt"
+    other = tmp_path / "extra"
+    other.mkdir()
+    (other / "copy.txt").write_text(fixture.read_text(encoding="utf-8"), encoding="utf-8")
+    book = load_teacher_book(black_source=f"{fixture},{other}")
+    assert book.action_for(initial_state(), "black") is not None
+
+    from app.infrastructure.rl.white_demonstrations import load_black_win_transitions
+
+    loaded = load_black_win_transitions(f"{fixture},{other}", upsample_m14=1)
+    assert len(loaded) == 32
