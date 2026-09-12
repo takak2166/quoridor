@@ -27,6 +27,7 @@ from app.infrastructure.rl.train_notify import notify_training_finished
 from app.infrastructure.rl.dagger_losses import (
     load_hard_loss_texts,
     teacher_focus_transitions,
+    uncovered_hold_focus_transitions,
     uncovered_race_focus_transitions,
 )
 from app.infrastructure.rl.white_demonstrations import (
@@ -861,6 +862,24 @@ def main() -> None:
         help="Copies of each unique uncovered greedy-race correction (0 disables)",
     )
     parser.add_argument(
+        "--dagger-uncovered-hold-repeat",
+        type=int,
+        default=0,
+        help="Copies of greedy-race at the first uncovered ply (0 disables)",
+    )
+    parser.add_argument(
+        "--dagger-focus-colors",
+        type=str,
+        default="white,black",
+        help="Comma-separated colors for --dagger-focus-repeat",
+    )
+    parser.add_argument(
+        "--dagger-uncovered-colors",
+        type=str,
+        default="white,black",
+        help="Comma-separated colors for uncovered hold/error repeats",
+    )
+    parser.add_argument(
         "--agent-white-prob",
         type=float,
         default=None,
@@ -1072,7 +1091,9 @@ def main() -> None:
                             )
                     demos = list(white_demos) + list(black_demos)
                     if args.dagger_loss_dir and (
-                        args.dagger_focus_repeat > 0 or args.dagger_uncovered_repeat > 0
+                        args.dagger_focus_repeat > 0
+                        or args.dagger_uncovered_repeat > 0
+                        or args.dagger_uncovered_hold_repeat > 0
                     ):
                         book = teacher_book
                         if book is None:
@@ -1083,10 +1104,20 @@ def main() -> None:
                                 white_prefer_stem=args.white_demo_upsample_stem,
                             )
                         loss_dir = Path(args.dagger_loss_dir)
+                        focus_colors = {
+                            part.strip()
+                            for part in args.dagger_focus_colors.split(",")
+                            if part.strip()
+                        }
+                        uncovered_colors = {
+                            part.strip()
+                            for part in args.dagger_uncovered_colors.split(",")
+                            if part.strip()
+                        }
                         focus = []
                         for color in ("white", "black"):
                             texts = load_hard_loss_texts(loss_dir, color)
-                            if args.dagger_focus_repeat > 0:
+                            if args.dagger_focus_repeat > 0 and color in focus_colors:
                                 added = teacher_focus_transitions(
                                     texts,
                                     book,
@@ -1098,6 +1129,22 @@ def main() -> None:
                                     color,
                                     len(added),
                                     args.dagger_focus_repeat,
+                                )
+                                focus.extend(added)
+                            if color not in uncovered_colors:
+                                continue
+                            if args.dagger_uncovered_hold_repeat > 0:
+                                added = uncovered_hold_focus_transitions(
+                                    texts,
+                                    book,
+                                    color,
+                                    repeat=args.dagger_uncovered_hold_repeat,
+                                )
+                                logger.info(
+                                    "DAgger uncovered-hold %s: transitions=%d repeat=%d",
+                                    color,
+                                    len(added),
+                                    args.dagger_uncovered_hold_repeat,
                                 )
                                 focus.extend(added)
                             if args.dagger_uncovered_repeat > 0:

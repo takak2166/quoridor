@@ -78,6 +78,21 @@ def test_first_uncovered_race_error_skips_book_then_flags_race() -> None:
     assert getattr(race, "to", None) != (1, 3)
 
 
+def test_uncovered_hold_focus_records_first_uncovered_race() -> None:
+    from app.infrastructure.rl.dagger_losses import uncovered_hold_focus_transitions
+    from app.infrastructure.rl.white_demonstrations import TeacherBook, greedy_race_action
+    from quoridor.agent_frame import encode_for_viewer
+
+    book = TeacherBook(actions={})
+    focused = uncovered_hold_focus_transitions(
+        ["scoresheet=M(1, 4),M(7, 4)"], book, "black", repeat=2
+    )
+    assert len(focused) == 2
+    race = greedy_race_action(initial_state(), "black")
+    expected = encode_for_viewer(race, initial_state().black, "black")
+    assert {item.action for item in focused} == {expected}
+
+
 def test_uncovered_race_focus_repeats_unique_error() -> None:
     from app.infrastructure.rl.dagger_losses import uncovered_race_focus_transitions
     from app.infrastructure.rl.white_demonstrations import TeacherBook, greedy_race_action

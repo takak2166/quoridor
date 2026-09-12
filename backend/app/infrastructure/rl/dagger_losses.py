@@ -160,6 +160,39 @@ def unique_race_errors(
     return ranked[: max(0, limit)]
 
 
+def uncovered_hold_focus_transitions(
+    texts: list[str],
+    book: TeacherBook,
+    hard_color: Color,
+    *,
+    repeat: int,
+) -> list[DemoTransition]:
+    """Repeat greedy-race at the first uncovered ply (even if the loss matched)."""
+    if repeat <= 0:
+        return []
+    seen: set[tuple] = set()
+    out: list[DemoTransition] = []
+    for text in texts:
+        found = first_divergence(text, book, hard_color)
+        if found is None or found.reason != "uncovered":
+            continue
+        game = Game.from_initial()
+        for spec in found.prefix:
+            action = resolve_prefix_action(game.state, spec)
+            if action is None:
+                break
+            game.play(action)
+        else:
+            race = greedy_race_action(game.state, hard_color)
+            key = (hard_color, position_key(game.state))
+            if key in seen:
+                continue
+            seen.add(key)
+            transition = record_demo_transition(game.state, race, hard_color)
+            out.extend([transition] * repeat)
+    return out
+
+
 def uncovered_race_focus_transitions(
     texts: list[str],
     book: TeacherBook,

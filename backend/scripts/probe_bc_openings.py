@@ -123,6 +123,18 @@ def main() -> None:
 
     loss64 = ROOT / "artifacts/hard_losses_sidebit/game_003_black_loss_64.txt"
     if loss64.is_file():
+        game = _replay(loss64.read_text(encoding="utf-8"), 40)
+        assert game.state.current_player == "black"
+        hold = Move(direction="left", to=(2, 1))
+        wall = WallSlot(orientation="vertical", row=4, col=3)
+        probs41, _legal41, from41 = _probs(model, game.state, "black")
+        print(
+            f"Black ply41 M(2,1) softmax={_mass(probs41, from41, 'black', hold):.4f} "
+            f"argmax={int(probs41.argmax())}"
+        )
+        print(
+            f"Black ply41 V(4,3) softmax={_mass(probs41, from41, 'black', wall):.4f}"
+        )
         game = _replay(loss64.read_text(encoding="utf-8"), 42)
         assert game.state.current_player == "black"
         race = Move(direction="left", to=(2, 0))

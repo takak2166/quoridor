@@ -7,7 +7,8 @@ export PYTHONUNBUFFERED=1
 export QUORIDOR_SECOND_PLAYER_OBS_BIT=true
 OUT_DIR="${OUT_DIR:-../models/finetune_bw_black64}"
 WHITE_SHEETS="artifacts/white_wins_vs_400ms/pawn_first"
-BLACK_SHEETS="artifacts/black_wins_vs_400ms/pawn_first,artifacts/black_wins_vs_400ms/black64"
+# Hunt sheets taught V(4,3) at ply 41 and skipped the M(2,0) state. Labels only.
+BLACK_SHEETS="artifacts/black_wins_vs_400ms/pawn_first"
 mkdir -p "$OUT_DIR/checkpoints"
 mkdir -p artifacts/black_wins_vs_400ms/black64
 exec python -u -m app.infrastructure.rl.train_ppo \
@@ -25,6 +26,9 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --black-demo-upsample-heavy 24 \
   --dagger-loss-dir artifacts/hard_losses_sidebit \
   --dagger-focus-repeat 256 \
+  --dagger-focus-colors white \
+  --dagger-uncovered-colors black \
+  --dagger-uncovered-hold-repeat 256 \
   --dagger-uncovered-repeat 512 \
   --bc-only \
   --curriculum "" \
