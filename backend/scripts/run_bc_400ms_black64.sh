@@ -21,11 +21,11 @@ exec python -u -m app.infrastructure.rl.train_ppo \
   --black-demo-wins 0 \
   --black-demo-scoresheets "$BLACK_SHEETS" \
   --black-demo-upsample-m14 1 \
-  --black-demo-upsample-stem M14_M15_M25,race_error \
+  --black-demo-upsample-stem M14_M15_M25 \
   --black-demo-upsample-heavy 24 \
   --dagger-loss-dir artifacts/hard_losses_sidebit \
   --dagger-focus-repeat 256 \
-  --dagger-uncovered-repeat 256 \
+  --dagger-uncovered-repeat 512 \
   --bc-only \
   --curriculum "" \
   --opponent normal \
