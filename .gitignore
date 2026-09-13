@@ -29,14 +29,8 @@ models/checkpoints/
 backend/models/checkpoints/
 *.tfevents.*
 
-# Generated hunt / eval dumps (tracked teacher book stays)
-backend/artifacts/**/dagger/
-backend/artifacts/**/black64/
-backend/artifacts/**/first10/
-backend/artifacts/**/pawn_m/
-backend/artifacts/black64_eval_*/
-backend/artifacts/hard_losses_*/
-backend/artifacts/black_wins_vs_normal_seq/
+# Hunt / BC dumps (not part of the shipped tree)
+backend/artifacts/
 /artifacts/
 
 # --- Node / frontend ---
@@ -59,7 +53,6 @@ models/**/*.zip
 models/*.onnx
 !models/.gitkeep
 !models/quoridor_ppo_v1.zip
-!models/quoridor_ppo_best.zip
 
 # --- OS / IDE ---
 .DS_Store
