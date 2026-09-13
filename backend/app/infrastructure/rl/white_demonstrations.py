@@ -8,11 +8,13 @@ import random
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import numpy as np
-import torch
 from numpy.typing import NDArray
-from sb3_contrib import MaskablePPO
+
+if TYPE_CHECKING:
+    from sb3_contrib import MaskablePPO
 
 from app.infrastructure.ai.action_mask import legal_action_mask_agent_frame
 from app.mappers.observation_mapper import to_observation
@@ -789,6 +791,8 @@ def behavior_clone(
     batch_size: int = 64,
 ) -> float:
     """Supervised CE on demonstration actions. Returns the last batch loss."""
+    import torch
+
     if not transitions:
         raise ValueError("no demonstration transitions")
     if epochs <= 0:
