@@ -55,6 +55,7 @@ frontend/playwright/.cache/
 
 # --- Trained models (zip placed locally) ---
 models/*.zip
+models/**/*.zip
 models/*.onnx
 !models/.gitkeep
 !models/quoridor_ppo_v1.zip
