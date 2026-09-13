@@ -135,7 +135,10 @@ eval-selfplay: install-rl ## Self-play eval (override GAMES, MIN_WIN_RATE=0.55)
 		--difficulty-a $(or $(DIFF_A),easy) \
 		--difficulty-b $(or $(DIFF_B),normal) \
 		$(if $(MIN_WIN_RATE),--min-win-rate $(MIN_WIN_RATE),) \
-		$(if $(MAX_P99_MS),--max-p99-ms $(MAX_P99_MS),)
+		$(if $(MAX_P99_MS),--max-p99-ms $(MAX_P99_MS),) \
+		$(if $(SEED),--seed $(SEED),) \
+		$(if $(MAX_MOVES),--max-moves $(MAX_MOVES),) \
+		$(if $(PROGRESS),--progress,)
 
 # --- Cleanup ---
 
