@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from typing import Any
 
 import numpy as np
 from sb3_contrib.common.maskable.utils import get_action_masks

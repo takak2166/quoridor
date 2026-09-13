@@ -168,8 +168,8 @@ def test_uncovered_sheet_follow_clones_suffix_actions() -> None:
         repeat=3,
     )
     assert len(focused) == 3
-    from quoridor.domain.game import Game
     from app.infrastructure.rl.hunt_black_wins import resolve_prefix_action
+    from quoridor.domain.game import Game
 
     game = Game.from_initial()
     game.play(resolve_prefix_action(game.state, ("M", 1, 4)))

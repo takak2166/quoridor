@@ -21,9 +21,6 @@ from sb3_contrib.common.wrappers import ActionMasker
 from stable_baselines3.common.callbacks import CheckpointCallback
 from stable_baselines3.common.vec_env import DummyVecEnv, SubprocVecEnv
 
-from app.infrastructure.rl.env import QuoridorEnv
-from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
-from app.infrastructure.rl.train_notify import notify_training_finished
 from app.infrastructure.rl.dagger_losses import (
     load_hard_loss_texts,
     load_sheet_texts,
@@ -32,6 +29,9 @@ from app.infrastructure.rl.dagger_losses import (
     uncovered_race_focus_transitions,
     uncovered_sheet_follow_transitions,
 )
+from app.infrastructure.rl.env import QuoridorEnv
+from app.infrastructure.rl.mask_diagnostic import MaskDiagnosticVecEnv
+from app.infrastructure.rl.train_notify import notify_training_finished
 from app.infrastructure.rl.white_demonstrations import (
     DEFAULT_BLACK_VS_NORMAL_MAX_GAMES,
     DEFAULT_WHITE_DEMO_EPOCHS,

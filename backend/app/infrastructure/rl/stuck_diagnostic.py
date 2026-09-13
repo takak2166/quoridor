@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -48,7 +48,7 @@ def log_and_dump_stuck(
     legal = get_legal_actions(state)
     dist_w, dist_b = distances(state, None)
     payload: dict[str, Any] = {
-        "timestamp_utc": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S"),
+        "timestamp_utc": datetime.now(UTC).strftime("%Y%m%dT%H%M%S"),
         "stuck_side": stuck_side,
         "agent_color": agent_color,
         "opponent": opponent,
