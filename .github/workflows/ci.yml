@@ -21,7 +21,10 @@ jobs:
       - run: uv sync --extra dev --extra rl
       - run: uv run ruff check .
       - run: uv run mypy app/api app/services app/infrastructure/persistence app/schemas.py quoridor --no-error-summary
-      - run: uv run pytest -m "not slow" -q
+      - name: Provide Expert prior from the official Hard zip
+        working-directory: .
+        run: cp -f models/quoridor_ppo_v1.zip models/quoridor_ppo_best.zip
+      - run: uv run pytest -m "not slow" -q --tb=short
 
   frontend:
     runs-on: ubuntu-latest
