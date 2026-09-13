@@ -230,10 +230,6 @@ def _record_transition(state: QuoridorState, action: Action, viewer: Color) -> D
     return record_demo_transition(state, action, viewer)
 
 
-def _record_white_transition(state: QuoridorState, action: Action) -> DemoTransition:
-    return _record_transition(state, action, "white")
-
-
 def black_transitions_from_scoresheet(text: str) -> list[DemoTransition]:
     """Replay a saved scoresheet and keep Black's (first-player) transitions."""
     from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
@@ -735,22 +731,6 @@ def _play_match_with_chooser(
     if game.winner != "black":
         pending = []
     return game.winner, plies, ",".join(opening), pending
-
-
-def play_expert_black_vs_normal_white(
-    game_i: int,
-    *,
-    max_moves: int = DEFAULT_WHITE_DEMO_MAX_MOVES,
-    budget_ms: int = DEFAULT_EXPERT_MCTS_BUDGET_MS,
-) -> tuple[str | None, int, str]:
-    """Expert (MCTS, first) vs node-limited Normal (second)."""
-    winner, plies, opening, _pending = _play_match_with_chooser(
-        _expert_vs_normal_chooser(budget_ms=budget_ms),
-        game_seed=game_i * 1009,
-        max_moves=max_moves,
-        record_black=False,
-    )
-    return winner, plies, opening
 
 
 def iter_expert_black_vs_normal_games(

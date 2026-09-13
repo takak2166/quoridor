@@ -10,7 +10,6 @@ import re
 from dataclasses import dataclass
 
 from app.infrastructure.rl.white_demonstrations import (
-    DEFAULT_WHITE_DEMO_MAX_MOVES,
     _format_action,
     _node_limited_normal_policy,
     greedy_race_action,
@@ -243,7 +242,3 @@ def play_opening_vs_normal(
         white_kind=white_kind,
         tag=tag,
     )
-
-
-def default_max_moves() -> int:
-    return DEFAULT_WHITE_DEMO_MAX_MOVES
