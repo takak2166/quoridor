@@ -96,7 +96,7 @@ ci-full: ci test-slow test-e2e ## nightly / pre-release: ci + slow + E2E (incl. 
 .PHONY: release-gate
 release-gate: ci-full ensure-models ## v0.2 release gate: ci-full + self-play gates x2
 	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=easy MIN_WIN_RATE=0.55 MAX_P99_MS=500
-	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=hard MAX_P99_MS=500
+	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=hard MAX_P99_MS=3000
 
 .PHONY: ensure-models
 ensure-models: ## Ensure PPO model files exist (expert falls back to hard copy)

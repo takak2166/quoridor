@@ -1,0 +1,17 @@
+Black wins vs factory Normal (White / second, live 400ms / 1200 nodes).
+Hunt: sequential workers=1, --mode first, stop at 10 Black wins (41 games played, 10 black / 31 white).
+Pawn firsts: M(1, 4) wins; M(0, 3) and M(0, 5) lose.
+Hard PPO cannot play wall firsts while ppo_opening_wall_free_plies=2; only M(1, 4) is a legal Hard opening.
+
+count=10
+
+M(1, 4)	plies=61	final_black=(8, 1)	final_white=(6, 4)	black_win_vs_400ms_M14.txt
+H(0,4)	plies=47	final_black=(8, 5)	final_white=(5, 4)	black_win_vs_400ms_H04.txt
+H(0,7)	plies=59	final_black=(8, 8)	final_white=(1, 7)	black_win_vs_400ms_H07.txt
+H(1,4)	plies=57	final_black=(8, 8)	final_white=(6, 7)	black_win_vs_400ms_H14.txt
+H(1,5)	plies=57	final_black=(8, 2)	final_white=(2, 1)	black_win_vs_400ms_H15.txt
+H(1,6)	plies=81	final_black=(8, 0)	final_white=(1, 4)	black_win_vs_400ms_H16.txt
+H(1,7)	plies=59	final_black=(8, 8)	final_white=(2, 6)	black_win_vs_400ms_H17.txt
+H(2,0)	plies=73	final_black=(8, 0)	final_white=(3, 7)	black_win_vs_400ms_H20.txt
+H(2,2)	plies=53	final_black=(8, 4)	final_white=(3, 7)	black_win_vs_400ms_H22.txt
+V(2,2)	plies=67	final_black=(8, 4)	final_white=(4, 4)	black_win_vs_400ms_V22.txt

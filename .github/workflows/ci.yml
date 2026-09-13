@@ -61,8 +61,17 @@ jobs:
         with:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
-      - run: uv sync --extra dev
+      - run: uv sync --extra dev --extra rl
         working-directory: backend
+      - name: Ensure PPO models for E2E
+        working-directory: backend
+        run: |
+          if [ ! -f ../models/quoridor_ppo_v1.zip ]; then
+            uv run python -m app.infrastructure.rl.train_ppo \
+              --timesteps 512 --n-envs 2 --opponent random \
+              --output ../models/quoridor_ppo_v1.zip
+          fi
+          cp ../models/quoridor_ppo_v1.zip ../models/quoridor_ppo_best.zip
       - run: pnpm install --frozen-lockfile
       - run: pnpm exec playwright install chromium --with-deps
       - run: pnpm test:e2e

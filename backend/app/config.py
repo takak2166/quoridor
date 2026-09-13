@@ -19,6 +19,17 @@ class Settings(BaseSettings):
     trust_forwarded_for: bool = False
     require_hard_model_ready: bool = False
     require_expert_model_ready: bool = False
+    # 0 / None = all legal walls. The path-affecting top-10 drops the White
+    # ply-14 teacher H(4,0) and forces the 49-move V(5,0) loss.
+    ppo_max_wall_candidates: int | None = 0
+    ppo_opening_wall_free_plies: int = 2
+    ppo_repeat_pawn_max_visits: int = 1
+    ppo_loop_filter_plies: int = 36
+    ppo_stall_plies: int = 40
+    # When True, obs[134] is 1 for White (second player). Agent-frame geometry
+    # is otherwise color-symmetric; this bit is the A/B toggle for whether the
+    # policy may keep separate first/second-player books.
+    second_player_obs_bit: bool = False
 
     @property
     def cors_origin_list(self) -> list[str]:

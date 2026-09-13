@@ -19,6 +19,19 @@ export interface BoardHints {
   hoveredWall: WallSlot | null;
 }
 
+/** Black's absolute orientation is inverted; flip so the human sits at visual bottom. */
+function needsFlip(humanColor: Color): boolean {
+  return humanColor === "black";
+}
+
+function displayPawnRow(modelRow: number, flip: boolean): number {
+  return flip ? 8 - modelRow : modelRow;
+}
+
+function displayWallRow(modelRow: number, flip: boolean): number {
+  return flip ? 7 - modelRow : modelRow;
+}
+
 function pos(row: number, col: number): [number, number] {
   return [OFFSET + col * CELL, OFFSET + row * CELL];
 }
@@ -74,6 +87,7 @@ export function renderBoard(
 ): void {
   const hints = options?.hints ?? null;
   const wallsEnabled = options?.wallsEnabled ?? true;
+  const flip = needsFlip(humanColor);
   const renderKey = JSON.stringify({
     state,
     humanColor,
@@ -88,7 +102,7 @@ export function renderBoard(
 
   for (let r = 0; r < 9; r++) {
     for (let c = 0; c < 9; c++) {
-      const [x, y] = pos(r, c);
+      const [x, y] = pos(displayPawnRow(r, flip), c);
       const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
       rect.setAttribute("x", String(x - HALF_PAWN));
       rect.setAttribute("y", String(y - HALF_PAWN));
@@ -97,6 +111,7 @@ export function renderBoard(
       rect.setAttribute("fill", (r + c) % 2 === 0 ? "#e8d4a8" : "#d4bc88");
       rect.setAttribute("stroke", "#8b7355");
       rect.setAttribute("data-testid", "board-cell");
+      // Model coordinates stay absolute for API / e2e; only SVG placement flips.
       rect.setAttribute("data-row", String(r));
       rect.setAttribute("data-col", String(c));
       rect.style.cursor = "pointer";
@@ -107,38 +122,71 @@ export function renderBoard(
 
   for (let r = 0; r < 8; r++) {
     for (let c = 0; c < 8; c++) {
+      const visRow = displayWallRow(r, flip);
       if (state.horizontal_walls[r][c]) {
-        drawWall(svg, "horizontal", r, c);
+        drawWall(svg, "horizontal", visRow, c);
       }
       if (state.vertical_walls[r][c]) {
-        drawWall(svg, "vertical", r, c);
+        drawWall(svg, "vertical", visRow, c);
       }
       if (wallsEnabled) {
         if (isLegalWallAt("horizontal", r, c)) {
-          drawWallHotspot(svg, "horizontal", r, c, onWallClick, onWallHover, onWallLeave);
+          drawWallHotspot(svg, "horizontal", r, c, visRow, onWallClick, onWallHover, onWallLeave);
         }
         if (isLegalWallAt("vertical", r, c)) {
-          drawWallHotspot(svg, "vertical", r, c, onWallClick, onWallHover, onWallLeave);
+          drawWallHotspot(svg, "vertical", r, c, visRow, onWallClick, onWallHover, onWallLeave);
         }
       }
     }
   }
 
   if (hints?.hoveredWall) {
-    drawWallPreview(svg, hints.hoveredWall.orientation, hints.hoveredWall.row, hints.hoveredWall.col);
+    drawWallPreview(
+      svg,
+      hints.hoveredWall.orientation,
+      displayWallRow(hints.hoveredWall.row, flip),
+      hints.hoveredWall.col,
+    );
   }
 
   if (hints) {
     for (const target of hints.moveTargets) {
-      drawGhostPawn(svg, target.row, target.col, hints.pawnFill, hints.pawnStroke, onCellClick);
+      drawGhostPawn(
+        svg,
+        displayPawnRow(target.row, flip),
+        target.col,
+        target.row,
+        target.col,
+        hints.pawnFill,
+        hints.pawnStroke,
+        onCellClick,
+      );
     }
   }
 
-  drawPawn(svg, state.white.row, state.white.col, "#f8f8f8", "#333", onCellClick);
-  drawPawn(svg, state.black.row, state.black.col, "#2d2d2d", "#fff", onCellClick);
+  drawPawn(
+    svg,
+    displayPawnRow(state.white.row, flip),
+    state.white.col,
+    state.white.row,
+    state.white.col,
+    "#f8f8f8",
+    "#333",
+    onCellClick,
+  );
+  drawPawn(
+    svg,
+    displayPawnRow(state.black.row, flip),
+    state.black.col,
+    state.black.row,
+    state.black.col,
+    "#2d2d2d",
+    "#fff",
+    onCellClick,
+  );
 
   const human = humanColor === "white" ? state.white : state.black;
-  const [hx, hy] = pos(human.row, human.col);
+  const [hx, hy] = pos(displayPawnRow(human.row, flip), human.col);
   const ring = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   ring.setAttribute("cx", String(hx));
   ring.setAttribute("cy", String(hy));
@@ -152,13 +200,15 @@ export function renderBoard(
 
 function drawGhostPawn(
   svg: SVGSVGElement,
-  row: number,
-  col: number,
+  displayRow: number,
+  displayCol: number,
+  modelRow: number,
+  modelCol: number,
   fill: string,
   stroke: string,
   onCellClick: (row: number, col: number) => void,
 ): void {
-  const [x, y] = pos(row, col);
+  const [x, y] = pos(displayRow, displayCol);
   const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   c.setAttribute("cx", String(x));
   c.setAttribute("cy", String(y));
@@ -169,26 +219,28 @@ function drawGhostPawn(
   c.setAttribute("stroke-opacity", "0.5");
   c.setAttribute("stroke-width", "2");
   c.setAttribute("data-testid", "pawn-ghost");
-  c.setAttribute("data-row", String(row));
-  c.setAttribute("data-col", String(col));
+  c.setAttribute("data-row", String(modelRow));
+  c.setAttribute("data-col", String(modelCol));
   c.style.cursor = "pointer";
   c.style.pointerEvents = "none";
   c.addEventListener("click", (e) => {
     e.stopPropagation();
-    onCellClick(row, col);
+    onCellClick(modelRow, modelCol);
   });
   svg.appendChild(c);
 }
 
 function drawPawn(
   svg: SVGSVGElement,
-  row: number,
-  col: number,
+  displayRow: number,
+  displayCol: number,
+  modelRow: number,
+  modelCol: number,
   fill: string,
   stroke: string,
   onCellClick: (row: number, col: number) => void,
 ): void {
-  const [x, y] = pos(row, col);
+  const [x, y] = pos(displayRow, displayCol);
   const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
   c.setAttribute("cx", String(x));
   c.setAttribute("cy", String(y));
@@ -197,12 +249,12 @@ function drawPawn(
   c.setAttribute("stroke", stroke);
   c.setAttribute("stroke-width", "2");
   c.setAttribute("data-testid", fill === "#f8f8f8" ? "pawn-white" : "pawn-black");
-  c.setAttribute("data-row", String(row));
-  c.setAttribute("data-col", String(col));
+  c.setAttribute("data-row", String(modelRow));
+  c.setAttribute("data-col", String(modelCol));
   c.style.cursor = "pointer";
   c.addEventListener("click", (e) => {
     e.stopPropagation();
-    onCellClick(row, col);
+    onCellClick(modelRow, modelCol);
   });
   svg.appendChild(c);
 }
@@ -260,8 +312,9 @@ function setWallLineCoords(
 function drawWallHotspot(
   svg: SVGSVGElement,
   orientation: "horizontal" | "vertical",
-  row: number,
-  col: number,
+  modelRow: number,
+  modelCol: number,
+  displayRow: number,
   onWallClick: (orientation: "horizontal" | "vertical", row: number, col: number) => void,
   onWallHover: ((orientation: "horizontal" | "vertical", row: number, col: number) => void) | null,
   onWallLeave: (() => void) | null,
@@ -272,15 +325,15 @@ function drawWallHotspot(
 
   const group = document.createElementNS("http://www.w3.org/2000/svg", "g");
   group.setAttribute("data-testid", orientation === "horizontal" ? "wall-h" : "wall-v");
-  group.setAttribute("data-row", String(row));
-  group.setAttribute("data-col", String(col));
+  group.setAttribute("data-row", String(modelRow));
+  group.setAttribute("data-col", String(modelCol));
   group.style.cursor = "crosshair";
   group.addEventListener("click", (e) => {
     e.stopPropagation();
-    onWallClick(orientation, row, col);
+    onWallClick(orientation, modelRow, modelCol);
   });
   if (onWallHover) {
-    group.addEventListener("mouseenter", () => onWallHover(orientation, row, col));
+    group.addEventListener("mouseenter", () => onWallHover(orientation, modelRow, modelCol));
   }
   if (onWallLeave) {
     group.addEventListener("mouseleave", () => onWallLeave());
@@ -299,17 +352,17 @@ function drawWallHotspot(
   };
 
   if (orientation === "horizontal") {
-    const { x1, x2, y } = horizontalWallSpan(row, col);
+    const { x1, x2, y } = horizontalWallSpan(displayRow, modelCol);
     const hy = y - hitThickness / 2;
     const h = hitThickness;
-    const splitX = verticalGrooveX(col);
+    const splitX = verticalGrooveX(modelCol);
     addHotspot(x1 - hitPad, hy, splitX - gap - (x1 - hitPad), h);
     addHotspot(splitX + gap, hy, x2 + hitPad - (splitX + gap), h);
   } else {
-    const { x, y1, y2 } = verticalWallSpan(row, col);
+    const { x, y1, y2 } = verticalWallSpan(displayRow, modelCol);
     const hx = x - hitThickness / 2;
     const w = hitThickness;
-    const splitY = horizontalGrooveY(row);
+    const splitY = horizontalGrooveY(displayRow);
     addHotspot(hx, y1 - hitPad, w, splitY - gap - (y1 - hitPad));
     addHotspot(hx, splitY + gap, w, y2 + hitPad - (splitY + gap));
   }

@@ -5,9 +5,11 @@ from __future__ import annotations
 import argparse
 import random
 import time
+from pathlib import Path
 
 from app.infrastructure.ai.factory import ai_for_difficulty
 from app.infrastructure.rl.selfplay_debug import RepetitionDebugger
+from app.infrastructure.rl.white_demonstrations import _format_action
 from quoridor.domain.game import Game
 from quoridor.domain.state import Color
 
@@ -24,6 +26,8 @@ def run_eval(
     progress: bool = False,
     stop_after_repetition: bool = False,
     seed: int | None = None,
+    scoresheet_dir: str | Path | None = None,
+    scoresheet_losses_only: bool = False,
 ) -> dict[str, float]:
     if seed is not None:
         random.seed(seed)
@@ -50,6 +54,7 @@ def run_eval(
             else None
         )
         moves = 0
+        labels: list[str] = []
         game_t0 = time.perf_counter()
         while not game.is_finished:
             if max_moves is not None and moves >= max_moves:
@@ -62,6 +67,7 @@ def run_eval(
             start = time.perf_counter()
             action = ai.select_move(game.state, color)
             latencies.append((time.perf_counter() - start) * 1000)
+            labels.append(_format_action(action))
             game.play(action)
             moves += 1
             if debugger is not None:
@@ -78,6 +84,22 @@ def run_eval(
             result = "timeout"
         if debugger is not None:
             total_repetitions += debugger.repetition_events
+        if scoresheet_dir is not None:
+            lost = game.winner is not None and game.winner != colors[0]
+            if lost or not scoresheet_losses_only:
+                from app.infrastructure.rl.dagger_losses import write_hunt_scoresheet
+
+                dump = Path(scoresheet_dir)
+                dump.mkdir(parents=True, exist_ok=True)
+                kind = "loss" if lost else (game.winner or "timeout")
+                write_hunt_scoresheet(
+                    dump / f"game_{i + 1:03d}_{colors[0]}_{kind}_{moves}.txt",
+                    tag=f"eval-{colors[0]}-{kind}",
+                    winner=game.winner,
+                    plies=moves,
+                    opening=",".join(labels[:10]),
+                    scoresheet=",".join(labels),
+                )
         if progress:
             rep_note = (
                 f" repetitions={debugger.repetition_events}"
@@ -145,6 +167,17 @@ def main() -> None:
         help="Stop the whole run after the first game that produces a 千日手 (debug capture)",
     )
     parser.add_argument("--seed", type=int, default=None, help="Seed RNG for reproducibility")
+    parser.add_argument(
+        "--scoresheet-dir",
+        type=str,
+        default=None,
+        help="Write per-game scoresheets here",
+    )
+    parser.add_argument(
+        "--scoresheet-losses-only",
+        action="store_true",
+        help="When dumping scoresheets, keep only Hard losses",
+    )
     args = parser.parse_args()
 
     result = run_eval(
@@ -158,6 +191,8 @@ def main() -> None:
         progress=args.progress,
         stop_after_repetition=args.stop_after_repetition,
         seed=args.seed,
+        scoresheet_dir=args.scoresheet_dir,
+        scoresheet_losses_only=args.scoresheet_losses_only,
     )
     print(f"Games: {int(result['games'])}")
     print(f"Finished: {int(result['finished'])} (timeouts: {int(result['timeouts'])})")

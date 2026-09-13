@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from quoridor.board_topology import can_step, is_horizontal_wall, is_vertical_wall
+from quoridor.board_topology import can_step
 from quoridor.domain.actions import Direction, absolute_delta
 from quoridor.domain.state import Color, QuoridorState
 
@@ -35,16 +35,16 @@ def step_destinations_in_direction(
         return frozenset({adj})
 
     jump = (adj[0] + dr, adj[1] + dc)
-    allow_straight_jump = adj[1] not in (0, 8)
     if (
-        allow_straight_jump
-        and 0 <= jump[0] <= 8
+        0 <= jump[0] <= 8
         and 0 <= jump[1] <= 8
         and jump not in occupied
         and can_step(state, adj, jump)
     ):
         return frozenset({jump})
 
+    # Straight jump blocked (wall / edge / occupied): allow lateral diagonals
+    # from the opponent cell when that orthogonal step is open.
     diags: set[tuple[int, int]] = set()
     for perp in _perpendicular(direction):
         pdr, pdc = absolute_delta(color, perp)
@@ -54,16 +54,6 @@ def step_destinations_in_direction(
         if diag in occupied:
             continue
         if can_step(state, adj, diag):
-            if (
-                diag[1] < adj[1]
-                and dr != 0
-                and is_horizontal_wall(state, adj[0] + dr, adj[1])
-                and (
-                    is_vertical_wall(state, adj[0], adj[1])
-                    or is_vertical_wall(state, adj[0] - 1, adj[1])
-                )
-            ):
-                continue
             diags.add(diag)
     return frozenset(diags)
 

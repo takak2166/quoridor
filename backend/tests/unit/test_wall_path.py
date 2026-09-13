@@ -6,14 +6,22 @@ from collections import deque
 
 import pytest
 
+from quoridor.board_topology import can_step
 from quoridor.pathfinding import (
     _bfs_distance,
     _expand_bfs_neighbors,
     both_reachable,
     can_reach_goal,
+    distances,
 )
-from quoridor.rules import _wall_maintains_paths, is_action_legal
-from tests.unit.fixtures.plan_fixtures import PF_CASES, WALL_PATH_CASES, build_state
+from quoridor.pawn_moves import step_destinations_from
+from quoridor.rules import _wall_maintains_paths, is_action_legal, move_destinations
+from tests.unit.fixtures.plan_fixtures import (
+    PF_CASES,
+    WALL_PATH_CASES,
+    build_state,
+    seed3_wall_separated_choke,
+)
 
 
 def _strict_both_reachable(state) -> bool:
@@ -98,6 +106,26 @@ def test_wall_path_check_uses_strict_not_evaluation_bfs() -> None:
     temp = corridor["state"].with_wall(wall.orientation, wall.row, wall.col)
     assert _wall_maintains_paths(corridor["state"], wall)
     assert both_reachable(temp) == _strict_both_reachable(temp)
+
+
+def test_wall_between_pawns_does_not_make_evaluation_unreachable() -> None:
+    """A pawn on a corridor is not a wall; evaluation distance must stay finite.
+
+    Official Quoridor: you cannot jump through a fence, but the opponent piece
+    itself cannot make the goal unreachable. Manhattan adjacency across a wall
+    must not disable ghost traversal.
+    """
+    state = seed3_wall_separated_choke()
+    assert abs(state.white[0] - state.black[0]) + abs(state.white[1] - state.black[1]) == 1
+    assert not can_step(state, state.white, state.black)
+    assert (3, 6) not in step_destinations_from(state, "white", state.white)
+    assert move_destinations(state, "right") == frozenset()
+
+    dw_eval = _bfs_distance(state, "white", for_evaluation=True)
+    db_eval = _bfs_distance(state, "black", for_evaluation=True)
+    assert dw_eval is not None
+    assert db_eval is not None
+    assert distances(state) == (dw_eval, db_eval)
 
 
 def test_barrier_last_wall_illegal_despite_pawns_far_from_wall_row() -> None:

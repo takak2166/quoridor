@@ -1,0 +1,14 @@
+White wins vs factory 400ms Normal (Black / first).
+White teacher: node-limited Normal. Forced pawn first+second (opening-wall-free).
+workers=1 sequential. 10/10 openings won.
+
+M(7,4)+M(6,4)  plies=56  main
+M(7,4)+M(8,4)  plies=78
+M(7,4)+M(7,3)  plies=70
+M(7,4)+M(7,5)  plies=70
+M(8,3)+M(7,3)  plies=70
+M(8,3)+M(8,2)  plies=78
+M(8,3)+M(8,4)  plies=78
+M(8,5)+M(7,5)  plies=70
+M(8,5)+M(8,4)  plies=78
+M(8,5)+M(8,6)  plies=78
