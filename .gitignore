@@ -29,6 +29,16 @@ models/checkpoints/
 backend/models/checkpoints/
 *.tfevents.*
 
+# Generated hunt / eval dumps (tracked teacher book stays)
+backend/artifacts/**/dagger/
+backend/artifacts/**/black64/
+backend/artifacts/**/first10/
+backend/artifacts/**/pawn_m/
+backend/artifacts/black64_eval_*/
+backend/artifacts/hard_losses_*/
+backend/artifacts/black_wins_vs_normal_seq/
+/artifacts/
+
 # --- Node / frontend ---
 frontend/node_modules/
 frontend/dist/

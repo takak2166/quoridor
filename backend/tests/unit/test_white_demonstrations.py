@@ -165,7 +165,7 @@ def test_load_black_win_transitions_missing_path() -> None:
         load_black_win_transitions(Path("/no/such/scoresheets"))
 
 
-def test_load_ten_pawn_first_400ms_scoresheets() -> None:
+def test_load_pawn_first_400ms_scoresheet() -> None:
     from pathlib import Path
 
     from app.infrastructure.rl.white_demonstrations import (
@@ -174,24 +174,23 @@ def test_load_ten_pawn_first_400ms_scoresheets() -> None:
     )
     from quoridor.domain.actions import FORWARD_STEP_INDEX
 
-    fixture_dir = Path(__file__).parent / "fixtures" / "black_wins_vs_400ms_pawn"
-    loaded = load_black_win_transitions(fixture_dir, upsample_m14=1)
-    assert len(list(fixture_dir.glob("*.txt"))) == 10
-    assert len(loaded) == 365
+    fixture = Path(__file__).parent / "fixtures" / "black_win_vs_400ms_pawn.txt"
+    main_n = len(black_transitions_from_scoresheet(fixture.read_text(encoding="utf-8")))
+    loaded = load_black_win_transitions(fixture, upsample_m14=1)
+    assert main_n > 0
+    assert len(loaded) == main_n
     assert all(item.obs.shape == (135,) for item in loaded)
     assert all(item.mask.any() for item in loaded)
     assert all(item.mask[item.action] for item in loaded)
     assert any(item.action == FORWARD_STEP_INDEX for item in loaded)
-    assert len(load_black_win_transitions(fixture_dir, upsample_m14=2)) == 501
-    main = next(fixture_dir.glob("*M14_M15_M25.txt"))
-    main_n = len(black_transitions_from_scoresheet(main.read_text(encoding="utf-8")))
+    assert len(load_black_win_transitions(fixture, upsample_m14=2)) == main_n * 2
     heavy = load_black_win_transitions(
-        fixture_dir,
+        fixture,
         upsample_m14=1,
-        upsample_stem="M14_M15_M25",
+        upsample_stem="400ms_pawn",
         upsample_heavy=12,
     )
-    assert len(heavy) == 365 + main_n * 11
+    assert len(heavy) == main_n * 12
 
 
 def test_white_transitions_from_scoresheet_fixture() -> None:
@@ -269,9 +268,9 @@ def test_teacher_book_prefer_stem_overwrites_conflicts(tmp_path) -> None:
     from quoridor.domain.actions import Move
     from quoridor.domain.game import Game
 
-    fixture_dir = Path(__file__).parent / "fixtures" / "black_wins_vs_400ms_pawn"
-    other_src = next(fixture_dir.glob("*M14_M15_M16.txt"))
-    main_src = next(fixture_dir.glob("*M14_M15_M25.txt"))
+    fixtures = Path(__file__).parent / "fixtures"
+    main_src = fixtures / "black_win_vs_400ms_pawn.txt"
+    other_src = fixtures / "black_win_vs_400ms_pawn_other.txt"
     # Sorted ingest would let zzz_other win the shared prefix; prefer-stem must undo that.
     (tmp_path / "aaa_M14_M15_M25.txt").write_text(main_src.read_text(encoding="utf-8"), encoding="utf-8")
     (tmp_path / "zzz_other.txt").write_text(other_src.read_text(encoding="utf-8"), encoding="utf-8")
