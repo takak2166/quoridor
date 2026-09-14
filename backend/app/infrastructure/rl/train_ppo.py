@@ -868,6 +868,16 @@ def main() -> None:
         help="Comma-separated colors for --dagger-follow-repeat",
     )
     parser.add_argument(
+        "--dagger-book-extra",
+        type=str,
+        default=None,
+        help=(
+            "Extra Black-win scoresheets ingested into the DAgger teacher book "
+            "only (not cloned as full BC demos). Use to detect mid-game "
+            "uncovered plies such as a Normal branch off an Easy opening."
+        ),
+    )
+    parser.add_argument(
         "--agent-white-prob",
         type=float,
         default=None,
@@ -1090,12 +1100,13 @@ def main() -> None:
                         and args.dagger_follow_repeat > 0
                     ):
                         book = teacher_book
-                        if book is None:
+                        if book is None or args.dagger_book_extra:
                             book = load_teacher_book(
                                 black_source=black_demo_scoresheets,
                                 white_source=white_demo_scoresheets,
                                 black_prefer_stem=args.black_demo_upsample_stem,
                                 white_prefer_stem=args.white_demo_upsample_stem,
+                                extra_black_source=args.dagger_book_extra,
                             )
                         focus = []
                         if args.dagger_loss_dir:

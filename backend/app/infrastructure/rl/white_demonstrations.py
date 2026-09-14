@@ -173,11 +173,15 @@ def load_teacher_book(
     white_source: str | Path | None = None,
     black_prefer_stem: str | None = None,
     white_prefer_stem: str | None = None,
+    extra_black_source: str | Path | None = None,
 ) -> TeacherBook:
     """Map (color, position_key) to the scoresheet action.
 
     Unique winning games are loaded first; sheets whose filename contains
     ``*_prefer_stem`` overwrite conflicts so the main line wins ties.
+    ``extra_black_source`` fills Black positions the main sheets do not cover
+    (no overwrite) so DAgger can detect a later uncovered ply without cloning
+    that whole game into the BC batch.
     """
     actions: dict[tuple[Color, tuple], Action] = {}
 
@@ -206,6 +210,13 @@ def load_teacher_book(
         ingest(black_source, "black", black_prefer_stem)
     if white_source:
         ingest(white_source, "white", white_prefer_stem)
+    if extra_black_source:
+        for file in _scoresheet_files(extra_black_source):
+            text = file.read_text(encoding="utf-8")
+            if not _looks_like_scoresheet(text):
+                continue
+            for key, action in _teacher_entries_from_scoresheet(text, "black"):
+                actions.setdefault(("black", key), action)
     logger.info("Teacher book: positions=%d", len(actions))
     return TeacherBook(actions=actions)
 

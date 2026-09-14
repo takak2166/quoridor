@@ -65,6 +65,9 @@ make train-ppo-expert TIMESTEPS=300000
 
 # Hard vs factory Normal gate (target >=70%, seed 97, max 400 plies, P99<=3000ms)
 make eval-selfplay GAMES=100 DIFF_A=hard DIFF_B=normal MIN_WIN_RATE=0.70 MAX_P99_MS=3000 SEED=97 MAX_MOVES=400 PROGRESS=1
+
+# Hard vs factory Easy gate (same target / seed / ply cap / P99)
+make eval-selfplay GAMES=100 DIFF_A=hard DIFF_B=easy MIN_WIN_RATE=0.70 MAX_P99_MS=3000 SEED=97 MAX_MOVES=400 PROGRESS=1
 ```
 
 Hard uses `models/quoridor_ppo_v1.zip` (MaskablePPO, second-player obs bit on). Expert (`models/quoridor_ppo_best.zip` as MCTS prior) is out of v0.2 GA. Training and Hard inference share `opening_wall_free_plies` (default 2): the PPO may not place walls until that color has taken that many actions, matching the MaskablePPO action mask used in `QuoridorEnv`. If the Hard zip is missing or `sb3_contrib` is not installed, Hard falls back to Normal minimax and increments `ai_fallback_total`; `/health` then reports `effective_ai.hard=minimax_fallback`. Expert reports `unavailable` and is omitted from the difficulty select.

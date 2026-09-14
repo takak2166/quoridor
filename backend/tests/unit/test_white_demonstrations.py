@@ -284,3 +284,25 @@ def test_teacher_book_prefer_stem_overwrites_conflicts(tmp_path) -> None:
     teacher = book.action_for(game.state, "black")
     assert isinstance(teacher, Move)
     assert teacher.to == (2, 5)
+
+
+def test_teacher_book_extra_black_adds_positions_without_replacing_main() -> None:
+    from pathlib import Path
+
+    from app.infrastructure.rl.hunt_black_wins import parse_scoresheet, resolve_prefix_action
+    from app.infrastructure.rl.white_demonstrations import load_teacher_book
+    from quoridor.domain.game import Game
+
+    fixtures = Path(__file__).parent / "fixtures"
+    main = fixtures / "black_win_vs_400ms_pawn.txt"
+    extra = fixtures / "black_win_vs_400ms_pawn_other.txt"
+    base = load_teacher_book(black_source=main)
+    merged = load_teacher_book(black_source=main, extra_black_source=extra)
+    assert len(merged.actions) > len(base.actions)
+
+    game = Game.from_initial()
+    for spec in parse_scoresheet(main.read_text(encoding="utf-8"))[:4]:
+        action = resolve_prefix_action(game.state, spec)
+        assert action is not None
+        game.play(action)
+    assert merged.action_for(game.state, "black") == base.action_for(game.state, "black")
