@@ -29,6 +29,10 @@ models/checkpoints/
 backend/models/checkpoints/
 *.tfevents.*
 
+# Hunt / BC dumps (not part of the shipped tree)
+backend/artifacts/
+/artifacts/
+
 # --- Node / frontend ---
 frontend/node_modules/
 frontend/dist/
@@ -45,8 +49,10 @@ frontend/playwright/.cache/
 
 # --- Trained models (zip placed locally) ---
 models/*.zip
+models/**/*.zip
 models/*.onnx
 !models/.gitkeep
+!models/quoridor_ppo_v1.zip
 
 # --- OS / IDE ---
 .DS_Store

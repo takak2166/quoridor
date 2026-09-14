@@ -31,10 +31,11 @@ def test_select_with_prior_returns_legal_move_with_to() -> None:
     case = next(c for c in JUMP_CASES if c["id"] == "J.2-DIAG-BOTH")
     legal = get_legal_actions(case["state"])
     policy = PPOPolicy(model_path="/nonexistent/model.zip")
+    from_pos = case["state"].pawn(case["state"].current_player)
     prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
     for action in legal:
-        prior[encode(action)] = 1.0
+        prior[encode(action, from_pos=from_pos)] = 1.0
     prior /= prior.sum()
-    chosen = policy._select_with_prior(prior, legal)
+    chosen = policy._select_with_prior(prior, legal, from_pos)
     assert chosen in legal
     assert chosen.to is not None

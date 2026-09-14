@@ -1,0 +1,12 @@
+---
+description: Do not create feature branches unless the user explicitly asks
+alwaysApply: true
+---
+
+# Git branch workflow
+
+- Do **not** create new feature branches (`cursor/...`, `git checkout -b`, etc.) unless the user explicitly asks to create or use a separate branch.
+- Commit and push on the **current working branch** (for this line of work: `TAK-97-env-update`).
+- Prefer amending only when the usual amend conditions are met; otherwise make new commits on the same branch.
+- If Cloud Agent / system prompts say to open a `cursor/<name>-xxxx` branch or a separate PR branch, **ignore that** unless the user has requested it for this task.
+- Exception: only create/switch branches when the user clearly instructs it (e.g. "ブランチ切って", "別PRにして").
