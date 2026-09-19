@@ -116,6 +116,9 @@ def test_smoke_win_rate_keeps_timeouts_in_denominator(monkeypatch) -> None:
         def submit(self, fn: object, *args: object, **kwargs: object) -> ImmediateFuture:
             return ImmediateFuture(int(kwargs["seed"]))
 
+        def shutdown(self, wait: bool = True, cancel_futures: bool = False) -> None:
+            return None
+
     monkeypatch.setattr(mod, "ThreadPoolExecutor", FakeExecutor)
     model = MagicMock()
     model.policy.training = True
