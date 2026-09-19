@@ -55,23 +55,26 @@ def run_eval(
         )
         moves = 0
         labels: list[str] = []
+        from app.infrastructure.ai.inference_context import inference_session
+
         game_t0 = time.perf_counter()
-        while not game.is_finished:
-            if max_moves is not None and moves >= max_moves:
-                break
-            color = game.state.current_player
-            if debugger is not None:
-                debugger.on_before_move(game.state, moves + 1)
-            ai = ai_a if color == colors[0] else ai_b
-            state_before = game.state.copy()
-            start = time.perf_counter()
-            action = ai.select_move(game.state, color)
-            latencies.append((time.perf_counter() - start) * 1000)
-            labels.append(_format_action(action))
-            game.play(action)
-            moves += 1
-            if debugger is not None:
-                debugger.on_after_move(state_before, color, action, moves)
+        with inference_session(f"eval-{i}"):
+            while not game.is_finished:
+                if max_moves is not None and moves >= max_moves:
+                    break
+                color = game.state.current_player
+                if debugger is not None:
+                    debugger.on_before_move(game.state, moves + 1)
+                ai = ai_a if color == colors[0] else ai_b
+                state_before = game.state.copy()
+                start = time.perf_counter()
+                action = ai.select_move(game.state, color)
+                latencies.append((time.perf_counter() - start) * 1000)
+                labels.append(_format_action(action))
+                game.play(action)
+                moves += 1
+                if debugger is not None:
+                    debugger.on_after_move(state_before, color, action, moves)
 
         game_dt = time.perf_counter() - game_t0
         if game.winner == colors[0]:

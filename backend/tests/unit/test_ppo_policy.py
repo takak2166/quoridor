@@ -27,6 +27,20 @@ def test_ppo_tie_break_not_sorted_col_zero() -> None:
     assert (4, 5) in picks
 
 
+def test_loop_state_isolated_per_inference_session() -> None:
+    from app.infrastructure.ai.inference_context import inference_session
+
+    policy = PPOPolicy(model_path="/nonexistent/model.zip")
+    with inference_session("game-a"):
+        loop_a = policy._loop()
+        loop_a.select_count["black"] = 3
+        loop_a.pawn_path["black"] = [(0, 4), (1, 4), (2, 4)]
+    with inference_session("game-b"):
+        loop_b = policy._loop()
+        assert loop_b.select_count.get("black", 0) == 0
+        assert "black" not in loop_b.pawn_path
+
+
 def test_select_with_prior_returns_legal_move_with_to() -> None:
     case = next(c for c in JUMP_CASES if c["id"] == "J.2-DIAG-BOTH")
     legal = get_legal_actions(case["state"])

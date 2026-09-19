@@ -116,16 +116,21 @@ def test_ppo_policy_excludes_repeated_action_from_same_position() -> None:
         for action in get_legal_actions(state)
         if isinstance(action, Move) and action.to == (2, 5)
     )
+    from app.infrastructure.ai.inference_context import inference_session
+
     policy = PPOPolicy(model_path="/nonexistent/model.zip")
-    policy._last_action_by_pos[("black", position_key(state))] = previous
-    policy._pawn_path["black"] = [(0, 4), (1, 4), (2, 4)]
-    policy._select_count["black"] = 36
-    filtered = policy._apply_loop_filters(state, "black", [previous, other])
+    with inference_session("unit-test-loop"):
+        loop = policy._loop()
+        loop.last_action_by_pos[("black", position_key(state))] = previous
+        loop.pawn_path["black"] = [(0, 4), (1, 4), (2, 4)]
+        loop.select_count["black"] = 36
+        filtered = policy._apply_loop_filters(state, "black", [previous, other])
     assert previous not in filtered
     assert other in filtered
 
 
 def test_ppo_policy_breaks_stall_with_greedy_race() -> None:
+    from app.infrastructure.ai.inference_context import inference_session
     from app.infrastructure.ai.ppo_policy import PPOPolicy
 
     state = initial_state()
@@ -136,9 +141,11 @@ def test_ppo_policy_breaks_stall_with_greedy_race() -> None:
         if isinstance(action, Move) and action.to == (1, 4)
     )
     policy = PPOPolicy(model_path="/nonexistent/model.zip")
-    policy._select_count["black"] = 40
-    policy._pawn_path["black"] = [(0, 4)]
-    chosen = policy._break_stall(state, "black", [wall, race], wall)
+    with inference_session("unit-test-stall"):
+        loop = policy._loop()
+        loop.select_count["black"] = 40
+        loop.pawn_path["black"] = [(0, 4)]
+        chosen = policy._break_stall(state, "black", [wall, race], wall)
     assert chosen == race
 
 
@@ -165,10 +172,14 @@ def test_ppo_policy_skips_loop_filters_during_opening_book() -> None:
         for action in get_legal_actions(state)
         if isinstance(action, Move) and action.to == (2, 5)
     )
+    from app.infrastructure.ai.inference_context import inference_session
+
     policy = PPOPolicy(model_path="/nonexistent/model.zip")
-    policy._last_action_by_pos[("black", position_key(state))] = previous
-    policy._pawn_path["black"] = [(0, 4), (1, 4), (2, 4)]
-    policy._select_count["black"] = 10
-    filtered = policy._apply_loop_filters(state, "black", [previous, other])
+    with inference_session("unit-test-opening"):
+        loop = policy._loop()
+        loop.last_action_by_pos[("black", position_key(state))] = previous
+        loop.pawn_path["black"] = [(0, 4), (1, 4), (2, 4)]
+        loop.select_count["black"] = 10
+        filtered = policy._apply_loop_filters(state, "black", [previous, other])
     assert previous in filtered
     assert other in filtered

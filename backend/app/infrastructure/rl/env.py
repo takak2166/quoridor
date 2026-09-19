@@ -362,7 +362,13 @@ class QuoridorEnv(gym.Env):
                 raise ValueError(f"Unsupported opponent: {self.opponent!r}")
             self._opponent_policy_name = self.opponent
 
-        return self._opponent_policy.select_move(self._state, self._state.current_player)
+        from app.infrastructure.ai.inference_context import inference_session
+
+        with inference_session(f"env-{id(self)}"):
+            return self._opponent_policy.select_move(
+                self._state,
+                self._state.current_player,
+            )
 
     def _obs(self) -> np.ndarray:
         return to_observation(self._state, self.agent_color)

@@ -345,6 +345,32 @@ def _play_smoke_game(
     seed: int,
     predict_lock: threading.Lock | None = None,
 ) -> bool:
+    from app.infrastructure.ai.inference_context import inference_session
+
+    with inference_session(f"smoke-{seed}"):
+        return _play_smoke_game_inner(
+            model,
+            opponent,
+            gamma=gamma,
+            potential_scale=potential_scale,
+            max_wall_candidates=max_wall_candidates,
+            opening_wall_free_plies=opening_wall_free_plies,
+            seed=seed,
+            predict_lock=predict_lock,
+        )
+
+
+def _play_smoke_game_inner(
+    model: MaskablePPO,
+    opponent: str,
+    *,
+    gamma: float,
+    potential_scale: float,
+    max_wall_candidates: int | None,
+    opening_wall_free_plies: int,
+    seed: int,
+    predict_lock: threading.Lock | None,
+) -> bool:
     env = QuoridorEnv(
         opponent=opponent,
         reward_shaping=False,

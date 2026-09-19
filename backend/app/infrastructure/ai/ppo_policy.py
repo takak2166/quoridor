@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import random
+import threading
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -17,6 +18,7 @@ from app.infrastructure.ai.action_mask import (
     policy_wall_candidate_limit,
 )
 from app.infrastructure.ai.evaluation import StateEvaluator
+from app.infrastructure.ai.inference_context import inference_session_id
 from app.infrastructure.ai.ppo_loader import ppo_model_store
 from app.infrastructure.rl.action_resolution import resolve_agent_index_to_action
 from app.mappers.observation_mapper import to_observation
@@ -27,6 +29,15 @@ from quoridor.pathfinding import SimpleDistanceCache
 
 logger = logging.getLogger(__name__)
 
+_DEFAULT_SESSION = "_default"
+
+
+@dataclass
+class _LoopSessionState:
+    pawn_path: dict[Color, list[tuple[int, int]]] = field(default_factory=dict)
+    select_count: dict[Color, int] = field(default_factory=dict)
+    last_action_by_pos: dict[tuple[Color, tuple], Action] = field(default_factory=dict)
+
 
 @dataclass
 class PPOPolicy:
@@ -34,12 +45,28 @@ class PPOPolicy:
     _evaluator: StateEvaluator = field(default_factory=StateEvaluator)
     _warned_missing: bool = False
     _dist_cache: SimpleDistanceCache = field(default_factory=SimpleDistanceCache)
-    _pawn_path: dict[Color, list[tuple[int, int]]] = field(default_factory=dict)
-    _select_count: dict[Color, int] = field(default_factory=dict)
-    _last_action_by_pos: dict[tuple[Color, tuple], Action] = field(default_factory=dict)
+    _session_loops: dict[str, _LoopSessionState] = field(default_factory=dict)
+    _loop_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def is_available(self) -> bool:
         return ppo_model_store.is_available(self.model_path)
+
+    def clear_inference_session(self, session_id: str) -> None:
+        with self._loop_lock:
+            self._session_loops.pop(session_id, None)
+
+    def _session_key(self) -> str:
+        sid = inference_session_id.get()
+        return sid if sid is not None else _DEFAULT_SESSION
+
+    def _loop(self) -> _LoopSessionState:
+        key = self._session_key()
+        with self._loop_lock:
+            loop = self._session_loops.get(key)
+            if loop is None:
+                loop = _LoopSessionState()
+                self._session_loops[key] = loop
+            return loop
 
     def select_move(self, state: QuoridorState, color: Color) -> Action:
         legal = legal_actions_for_policy(
@@ -175,11 +202,11 @@ class PPOPolicy:
             value = model.policy.predict_values(obs_tensor)
         return float(value.detach().cpu().numpy().reshape(-1)[0])
 
-    def _reset_color_loop_state(self, color: Color, pawn: tuple[int, int]) -> None:
-        self._pawn_path[color] = [pawn]
-        self._select_count[color] = 0
-        self._last_action_by_pos = {
-            key: action for key, action in self._last_action_by_pos.items() if key[0] != color
+    def _reset_color_loop_state(self, loop: _LoopSessionState, color: Color, pawn: tuple[int, int]) -> None:
+        loop.pawn_path[color] = [pawn]
+        loop.select_count[color] = 0
+        loop.last_action_by_pos = {
+            key: action for key, action in loop.last_action_by_pos.items() if key[0] != color
         }
 
     def _apply_loop_filters(
@@ -188,10 +215,11 @@ class PPOPolicy:
         color: Color,
         legal: list[Action],
     ) -> list[Action]:
+        loop = self._loop()
         if estimated_agent_plies(state, color) == 0:
-            self._reset_color_loop_state(color, state.pawn(color))
-        path = self._pawn_path.setdefault(color, [state.pawn(color)])
-        if self._select_count.get(color, 0) < settings.ppo_loop_filter_plies:
+            self._reset_color_loop_state(loop, color, state.pawn(color))
+        path = loop.pawn_path.setdefault(color, [state.pawn(color)])
+        if loop.select_count.get(color, 0) < settings.ppo_loop_filter_plies:
             return legal
         legal = filter_repeat_pawn_cells(
             legal,
@@ -199,7 +227,7 @@ class PPOPolicy:
             max_visits=settings.ppo_repeat_pawn_max_visits,
         )
         pos_key = (color, position_key(state))
-        return exclude_previous_action(legal, self._last_action_by_pos.get(pos_key))
+        return exclude_previous_action(legal, loop.last_action_by_pos.get(pos_key))
 
     def _break_stall(
         self,
@@ -208,11 +236,12 @@ class PPOPolicy:
         legal: list[Action],
         chosen: Action,
     ) -> Action:
+        loop = self._loop()
         if not isinstance(chosen, WallSlot):
             return chosen
-        if self._select_count.get(color, 0) < settings.ppo_stall_plies:
+        if loop.select_count.get(color, 0) < settings.ppo_stall_plies:
             return chosen
-        path = self._pawn_path.get(color, [])
+        path = loop.pawn_path.get(color, [])
         recent = path[-8:] if path else []
         if recent and len(set(recent)) > 2:
             return chosen
@@ -224,10 +253,11 @@ class PPOPolicy:
         return chosen
 
     def _remember_action(self, state: QuoridorState, color: Color, action: Action) -> None:
-        self._last_action_by_pos[(color, position_key(state))] = action
-        self._select_count[color] = self._select_count.get(color, 0) + 1
+        loop = self._loop()
+        loop.last_action_by_pos[(color, position_key(state))] = action
+        loop.select_count[color] = loop.select_count.get(color, 0) + 1
         if isinstance(action, Move) and action.to is not None:
-            self._pawn_path.setdefault(color, [state.pawn(color)]).append(action.to)
+            loop.pawn_path.setdefault(color, [state.pawn(color)]).append(action.to)
 
     def _select_with_prior(
         self,

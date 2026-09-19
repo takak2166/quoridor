@@ -221,8 +221,11 @@ class GameService:
                 {"reason": "concurrency_limit", "difficulty": record.difficulty},
             )
         try:
+            from app.infrastructure.ai.inference_context import inference_session
+
             start = time.perf_counter()
-            action = ai.select_move(record.game.state, cpu_color)
+            with inference_session(record.game_id):
+                action = ai.select_move(record.game.state, cpu_color)
             if isinstance(action, Move):
                 if action.to is None:
                     from app.infrastructure.rl.move_resolution import resolve_ambiguous_move
