@@ -71,12 +71,11 @@ def greedy_race_action(
         if own is None:
             continue
         # Prefer shrinking distance; then prefer the more-forward destination.
-        forward_row = move.to[0] if color == "white" else -move.to[0]
-        tie = -forward_row
-        if own < best_dist or (own == best_dist and tie < best_tie):
+        forward_score = -move.to[0] if color == "white" else move.to[0]
+        if own < best_dist or (own == best_dist and forward_score > best_tie):
             best = move
             best_dist = own
-            best_tie = tie
+            best_tie = forward_score
     return best if best is not None else moves[0]
 
 
