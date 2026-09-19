@@ -27,6 +27,9 @@ htmlcov/
 backend/runs/
 models/checkpoints/
 backend/models/checkpoints/
+models/finetune_*/
+models/smoke_diag/
+models/stuck_dumps/
 *.tfevents.*
 
 # Hunt / BC dumps (not part of the shipped tree)
@@ -38,6 +41,7 @@ frontend/node_modules/
 frontend/dist/
 frontend/.installed
 frontend/node_modules/.installed
+frontend/frontend/
 .pnpm-store/
 
 # Vite / Playwright
@@ -66,6 +70,7 @@ Thumbs.db
 
 # --- Logs & temp files ---
 *.log
+*.log.*
 npm-debug.log*
 pnpm-debug.log*
 .cache/
