@@ -38,6 +38,24 @@ def test_build_payload_includes_slack_and_discord_fields() -> None:
     assert payload["elapsed_sec"] == 12.5
 
 
+def test_post_webhook_logs_host_only(caplog) -> None:
+    import logging
+
+    response = MagicMock()
+    response.status = 204
+    response.__enter__.return_value = response
+    response.__exit__.return_value = False
+    secret_url = "https://hooks.slack.com/services/T00/B00/xxxyyyzzz"
+    with caplog.at_level(logging.INFO, logger="app.infrastructure.rl.train_notify"):
+        with patch(
+            "app.infrastructure.rl.train_notify.urllib.request.urlopen",
+            return_value=response,
+        ):
+            assert post_webhook(secret_url, {"text": "hi"}) is True
+    assert "hooks.slack.com" in caplog.text
+    assert "xxxyyyzzz" not in caplog.text
+
+
 def test_post_webhook_posts_json() -> None:
     response = MagicMock()
     response.status = 200

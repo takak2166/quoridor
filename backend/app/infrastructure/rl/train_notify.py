@@ -8,6 +8,7 @@ import os
 import socket
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
 
@@ -106,7 +107,7 @@ def post_webhook(
         with urllib.request.urlopen(request, timeout=timeout_sec) as response:
             logger.info(
                 "Training webhook notified (%s): HTTP %s",
-                url.split("?", 1)[0],
+                urlparse(url).netloc,
                 getattr(response, "status", "ok"),
             )
             return True
