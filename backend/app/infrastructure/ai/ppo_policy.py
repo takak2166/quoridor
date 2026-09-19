@@ -10,7 +10,7 @@ from numpy.typing import NDArray
 
 from app.config import settings
 from app.infrastructure.ai.action_mask import (
-    estimated_agent_plies,
+    _START_PAWN,
     exclude_previous_action,
     filter_repeat_pawn_cells,
     legal_action_mask_agent_frame,
@@ -24,7 +24,7 @@ from app.infrastructure.rl.action_resolution import resolve_agent_index_to_actio
 from app.mappers.observation_mapper import to_observation
 from quoridor.agent_frame import encode_for_viewer
 from quoridor.domain.actions import NUM_ACTIONS, Action, Move, WallSlot, encode
-from quoridor.domain.state import Color, QuoridorState, position_key
+from quoridor.domain.state import WALLS_INITIAL, Color, QuoridorState, position_key
 from quoridor.pathfinding import SimpleDistanceCache
 
 logger = logging.getLogger(__name__)
@@ -68,6 +68,9 @@ class PPOPolicy:
                 self._session_loops[key] = loop
             return loop
 
+    def _agent_plies_for(self, color: Color) -> int:
+        return self._loop().select_count.get(color, 0)
+
     def select_move(self, state: QuoridorState, color: Color) -> Action:
         legal = legal_actions_for_policy(
             state,
@@ -75,6 +78,7 @@ class PPOPolicy:
             policy_wall_candidate_limit(settings.ppo_max_wall_candidates),
             color=color,
             opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
+            agent_plies_played=self._agent_plies_for(color),
         )
         legal = self._apply_loop_filters(state, color, legal)
         if not legal:
@@ -110,6 +114,7 @@ class PPOPolicy:
             policy_wall_candidate_limit(settings.ppo_max_wall_candidates),
             color=color,
             opening_wall_free_plies=settings.ppo_opening_wall_free_plies,
+            agent_plies_played=self._agent_plies_for(color),
         )
         legal = self._apply_loop_filters(state, color, legal)
         prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
@@ -216,7 +221,11 @@ class PPOPolicy:
         legal: list[Action],
     ) -> list[Action]:
         loop = self._loop()
-        if estimated_agent_plies(state, color) == 0:
+        at_start = (
+            state.pawn(color) == _START_PAWN[color]
+            and state.walls_remaining(color) == WALLS_INITIAL
+        )
+        if loop.select_count.get(color, 0) == 0 and at_start:
             self._reset_color_loop_state(loop, color, state.pawn(color))
         path = loop.pawn_path.setdefault(color, [state.pawn(color)])
         if loop.select_count.get(color, 0) < settings.ppo_loop_filter_plies:

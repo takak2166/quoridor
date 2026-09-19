@@ -36,6 +36,29 @@ def test_filter_opening_walls_on_first_two_plies() -> None:
     assert all(isinstance(action, Move) for action in policy_legal)
 
 
+def test_filter_opening_walls_uses_explicit_agent_plies() -> None:
+    from app.infrastructure.ai.action_mask import filter_opening_wall_free
+
+    state = initial_state()
+    legal = get_legal_actions(state)
+    at_start = filter_opening_wall_free(
+        legal,
+        state,
+        "black",
+        opening_wall_free_plies=2,
+        agent_plies_played=0,
+    )
+    assert all(isinstance(action, Move) for action in at_start)
+    after_two = filter_opening_wall_free(
+        legal,
+        state,
+        "black",
+        opening_wall_free_plies=2,
+        agent_plies_played=2,
+    )
+    assert any(isinstance(action, WallSlot) for action in after_two)
+
+
 def test_opening_walls_allowed_after_two_pawn_steps() -> None:
     from app.infrastructure.ai.action_mask import (
         estimated_agent_plies,

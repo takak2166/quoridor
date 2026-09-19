@@ -17,11 +17,10 @@ _START_PAWN: dict[Color, tuple[int, int]] = {"white": (8, 4), "black": (0, 4)}
 
 
 def estimated_agent_plies(state: QuoridorState, color: Color) -> int:
-    """Lower-bound of how many actions ``color`` has already taken.
+    """Heuristic lower-bound of actions ``color`` has taken (pawn Manhattan + walls).
 
-    Matches ``QuoridorEnv._agent_plies_played`` in the opening (pawn steps
-    plus walls used). Used so PPO inference can apply the same
-    ``opening_wall_free_plies`` mask as training.
+    Prefer passing explicit ``agent_plies_played`` into ``legal_actions_for_policy``
+    when ply count is tracked (``QuoridorEnv._agent_plies_played`` or PPO session state).
     """
     start_row, start_col = _START_PAWN[color]
     row, col = state.pawn(color)
@@ -35,11 +34,18 @@ def filter_opening_wall_free(
     state: QuoridorState,
     color: Color,
     opening_wall_free_plies: int,
+    *,
+    agent_plies_played: int | None = None,
 ) -> list[Action]:
     """Drop walls until ``color`` has taken ``opening_wall_free_plies`` actions."""
     if opening_wall_free_plies <= 0:
         return legal
-    if estimated_agent_plies(state, color) >= opening_wall_free_plies:
+    plies = (
+        agent_plies_played
+        if agent_plies_played is not None
+        else estimated_agent_plies(state, color)
+    )
+    if plies >= opening_wall_free_plies:
         return legal
     moves = [action for action in legal if isinstance(action, Move)]
     return moves or legal
@@ -96,6 +102,7 @@ def legal_actions_for_policy(
     *,
     color: Color | None = None,
     opening_wall_free_plies: int = 0,
+    agent_plies_played: int | None = None,
 ) -> list[Action]:
     legal = get_legal_actions(state, dist_cache=cache)
     limit = policy_wall_candidate_limit(max_wall_candidates)
@@ -104,7 +111,13 @@ def legal_actions_for_policy(
     else:
         selected = search_actions(state, legal, cache, limit)
     viewer = color if color is not None else state.current_player
-    return filter_opening_wall_free(selected, state, viewer, opening_wall_free_plies)
+    return filter_opening_wall_free(
+        selected,
+        state,
+        viewer,
+        opening_wall_free_plies,
+        agent_plies_played=agent_plies_played,
+    )
 
 
 def legal_action_mask(
