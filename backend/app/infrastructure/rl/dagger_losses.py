@@ -90,13 +90,22 @@ def hard_color_from_sheet(path: Path, text: str) -> Color | None:
     return None
 
 
+def _parse_winner_field(raw: str) -> str | None:
+    value = raw.strip()
+    if not value or value == "None":
+        return None
+    return value
+
+
 def is_hard_loss(path: Path, text: str, hard: Color) -> bool:
     winner = None
     for line in text.splitlines():
         if line.startswith("winner="):
-            winner = line.split("=", 1)[1].strip() or None
+            winner = _parse_winner_field(line.split("=", 1)[1])
             break
     if winner is None:
+        if "timeout" in path.name:
+            return False
         return "loss" in path.name
     return winner != hard
 
@@ -368,7 +377,7 @@ def write_hunt_scoresheet(
         "\n".join(
             [
                 f"tag={tag}",
-                f"winner={winner}",
+                f"winner={'' if winner is None else winner}",
                 f"plies={plies}",
                 f"opening={opening}",
                 f"scoresheet={scoresheet}",

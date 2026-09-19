@@ -136,6 +136,20 @@ def test_teacher_focus_repeats_unique_off_book_only() -> None:
     assert {item.action for item in focused} == {expected}
 
 
+def test_is_hard_loss_treats_none_winner_as_timeout(tmp_path: Path) -> None:
+    from app.infrastructure.rl.dagger_losses import is_hard_loss
+
+    path = tmp_path / "game_001_black_timeout_120.txt"
+    text = "tag=eval-black-timeout\nwinner=None\nscoresheet=M(1, 4)\n"
+    assert is_hard_loss(path, text, "black") is False
+    loss_path = tmp_path / "game_002_black_loss_64.txt"
+    assert is_hard_loss(
+        loss_path,
+        "tag=eval-black-loss\nwinner=white\nscoresheet=M(1, 4)\n",
+        "black",
+    )
+
+
 def test_load_hard_loss_texts_filters_by_color(tmp_path: Path) -> None:
     from app.infrastructure.rl.dagger_losses import load_hard_loss_texts
 
