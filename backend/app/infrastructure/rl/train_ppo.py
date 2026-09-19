@@ -449,7 +449,8 @@ def smoke_win_rate(
         max_workers = min(workers, games)
         # MaskablePPO.predict is not thread-safe; serialize shared-model calls.
         predict_lock = threading.Lock()
-        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+        executor = ThreadPoolExecutor(max_workers=max_workers)
+        try:
             futures = [
                 executor.submit(
                     _play_smoke_game,
@@ -468,6 +469,8 @@ def smoke_win_rate(
                 _smoke_game_won(future, timeout_sec=timeout_sec, opponent=opponent)
                 for future in futures
             )
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
     finally:
         model.policy.set_training_mode(was_training)
 
