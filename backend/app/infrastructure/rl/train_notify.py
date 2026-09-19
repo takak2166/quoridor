@@ -8,9 +8,9 @@ import os
 import socket
 import urllib.error
 import urllib.request
-from urllib.parse import urlparse
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 logger = logging.getLogger(__name__)
 
