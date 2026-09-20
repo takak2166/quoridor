@@ -27,13 +27,21 @@ htmlcov/
 backend/runs/
 models/checkpoints/
 backend/models/checkpoints/
+models/finetune_*/
+models/smoke_diag/
+models/stuck_dumps/
 *.tfevents.*
+
+# Hunt / BC dumps (not part of the shipped tree)
+backend/artifacts/
+/artifacts/
 
 # --- Node / frontend ---
 frontend/node_modules/
 frontend/dist/
 frontend/.installed
 frontend/node_modules/.installed
+frontend/frontend/
 .pnpm-store/
 
 # Vite / Playwright
@@ -45,8 +53,10 @@ frontend/playwright/.cache/
 
 # --- Trained models (zip placed locally) ---
 models/*.zip
+models/**/*.zip
 models/*.onnx
 !models/.gitkeep
+!models/quoridor_ppo_v1.zip
 
 # --- OS / IDE ---
 .DS_Store
@@ -60,6 +70,7 @@ Thumbs.db
 
 # --- Logs & temp files ---
 *.log
+*.log.*
 npm-debug.log*
 pnpm-debug.log*
 .cache/

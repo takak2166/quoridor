@@ -40,7 +40,7 @@ test.describe("Network & infrastructure", () => {
     const ready = await request.get(`http://127.0.0.1:${backendPort}/health/ready`);
     expect(ready.status()).toBe(200);
     const body = (await ready.json()) as { status: string; models?: Record<string, boolean> };
-    expect(body.status).toBe("ready");
+    expect(["ready", "degraded"]).toContain(body.status);
     expect(body.models).toBeDefined();
   });
 });

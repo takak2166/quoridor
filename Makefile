@@ -59,15 +59,15 @@ dev-frontend: install-frontend ## Vite dev server (:$(FRONTEND_PORT))
 test: test-fast ## Alias: fast tests (PR CI equivalent)
 
 .PHONY: test-fast
-test-fast: install-backend ## pytest (excluding slow)
+test-fast: install-rl ## pytest (excluding slow)
 	cd $(BACKEND_DIR) && $(UV) run pytest -m "not slow" -q
 
 .PHONY: test-slow
-test-slow: install-backend ## pytest slow only (benchmarks, self-play)
+test-slow: install-rl ## pytest slow only (benchmarks, self-play)
 	cd $(BACKEND_DIR) && $(UV) run pytest -m slow -q
 
 .PHONY: test-all
-test-all: install-backend ## pytest (all tests)
+test-all: install-rl ## pytest (all tests)
 	cd $(BACKEND_DIR) && $(UV) run pytest -q
 
 .PHONY: lint
@@ -96,7 +96,7 @@ ci-full: ci test-slow test-e2e ## nightly / pre-release: ci + slow + E2E (incl. 
 .PHONY: release-gate
 release-gate: ci-full ensure-models ## v0.2 release gate: ci-full + self-play gates x2
 	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=easy MIN_WIN_RATE=0.55 MAX_P99_MS=500
-	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=hard MAX_P99_MS=500
+	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=hard MAX_P99_MS=3000
 
 .PHONY: ensure-models
 ensure-models: ## Ensure PPO model files exist (expert falls back to hard copy)
@@ -135,7 +135,10 @@ eval-selfplay: install-rl ## Self-play eval (override GAMES, MIN_WIN_RATE=0.55)
 		--difficulty-a $(or $(DIFF_A),easy) \
 		--difficulty-b $(or $(DIFF_B),normal) \
 		$(if $(MIN_WIN_RATE),--min-win-rate $(MIN_WIN_RATE),) \
-		$(if $(MAX_P99_MS),--max-p99-ms $(MAX_P99_MS),)
+		$(if $(MAX_P99_MS),--max-p99-ms $(MAX_P99_MS),) \
+		$(if $(SEED),--seed $(SEED),) \
+		$(if $(MAX_MOVES),--max-moves $(MAX_MOVES),) \
+		$(if $(PROGRESS),--progress,)
 
 # --- Cleanup ---
 

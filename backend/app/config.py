@@ -19,6 +19,16 @@ class Settings(BaseSettings):
     trust_forwarded_for: bool = False
     require_hard_model_ready: bool = False
     require_expert_model_ready: bool = False
+    # 0 / None = all legal walls. The path-affecting top-10 drops the White
+    # ply-14 teacher H(4,0) and forces the 49-move V(5,0) loss.
+    ppo_max_wall_candidates: int | None = 0
+    ppo_opening_wall_free_plies: int = 2
+    ppo_repeat_pawn_max_visits: int = 1
+    ppo_loop_filter_plies: int = 36
+    ppo_stall_plies: int = 40
+    # Official Hard zip (quoridor_ppo_v1) is the sidebit BC. obs[134] is 1 for
+    # White. Set QUORIDOR_SECOND_PLAYER_OBS_BIT=false only for no-bit A/B zips.
+    second_player_obs_bit: bool = True
 
     @property
     def cors_origin_list(self) -> list[str]:
