@@ -24,9 +24,11 @@ Cwd `backend`. Fresh process per zip (`_POLICY_CACHE` is process-wide).
 
 README / `make eval-selfplay` add `MIN_WIN_RATE` for CI pass/fail. For adoption diagnostics, use the commands below **without** `--min-win-rate` so the win-rate summary prints (see **Do not**).
 
+Gate a **candidate** zip (e.g. `../models/finetune_*.zip` or soup output): set `QUORIDOR_MODEL_HARD` to that path and leave `models/quoridor_ppo_v1.zip` unchanged on disk until both 100-game runs pass; then copy the candidate over the official file.
+
 ```bash
 export PYTHONUNBUFFERED=1
-export QUORIDOR_MODEL_HARD=../models/quoridor_ppo_v1.zip
+export QUORIDOR_MODEL_HARD=../models/<candidate>.zip
 export QUORIDOR_SECOND_PLAYER_OBS_BIT=true
 export QUORIDOR_PPO_MAX_WALL_CANDIDATES=0
 .venv/bin/python -u -m app.infrastructure.rl.eval_selfplay \

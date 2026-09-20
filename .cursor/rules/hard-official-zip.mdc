@@ -7,7 +7,7 @@ alwaysApply: false
 # Official Hard zip
 
 - Tracked checkpoint is only `models/quoridor_ppo_v1.zip`. Leave experiment zips, `backend/artifacts/`, and `models/finetune_*` untracked.
-- Do not overwrite the official zip until Hard vs Easy **and** Hard vs Normal both reach ≥70% at 100 games, seed 97, max 400 plies, P99 ≤ 3000ms.
+- Do not overwrite the official zip until Hard vs Easy **and** Hard vs Normal both reach ≥70% at 100 games, seed 97, max 400 plies, **timeouts 0**, P99 ≤ 3000ms.
 - 16-game runs are smoke only. Diagnose without `--min-win-rate`.
 - After a zip replace, keep README Hard vs Easy / Hard vs Normal eval examples in sync.
 
