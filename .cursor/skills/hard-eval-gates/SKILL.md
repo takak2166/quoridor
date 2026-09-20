@@ -22,6 +22,8 @@ Official Hard is `models/quoridor_ppo_v1.zip` (MaskablePPO, second-player obs bi
 
 Cwd `backend`. Fresh process per zip (`_POLICY_CACHE` is process-wide).
 
+README / `make eval-selfplay` add `MIN_WIN_RATE` for CI pass/fail. For adoption diagnostics, use the commands below **without** `--min-win-rate` so the win-rate summary prints (see **Do not**).
+
 ```bash
 export PYTHONUNBUFFERED=1
 export QUORIDOR_MODEL_HARD=../models/quoridor_ppo_v1.zip

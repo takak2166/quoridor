@@ -6,7 +6,7 @@ These overwrite a working line. Do not add them to BC demos or DAgger follow unl
 
 | Sheet / pattern | Why it breaks |
 | --- | --- |
-| `tests/unit/fixtures/black_win_vs_normal_m14.txt` (`H(2,6)` then **`M(2,5)`**) | Official Black wins use **`M(2,7)`** after `H(2,6)` |
+| `backend/tests/unit/fixtures/black_win_vs_normal_m14.txt` (`H(2,6)` then **`M(2,5)`**) | Official Black wins use **`M(2,7)`** after `H(2,6)` |
 | `black_win_vs_normal_h73.txt` (first move `H(7,3)`) | Wipes opening `M(1,4)` |
 | Black hunt full games (`H(1,1)` factory 59 / node 75) | Conflicting labels at ply 19; collapses Normal Black |
 | White hunt of the **75-ply** loss (greedy) | Spawns 21-ply White losses |
