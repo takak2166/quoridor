@@ -19,6 +19,11 @@ jobs:
           python-version: "3.12"
       - uses: astral-sh/setup-uv@v5
       - run: uv sync --extra dev --extra rl
+      - name: Frontend plan fixtures are up to date
+        working-directory: .
+        run: |
+          make export-frontend-fixtures
+          git diff --exit-code -- frontend/src/__fixtures__/planFixtures.generated.json
       - run: uv run ruff check .
       - run: uv run mypy app/api app/services app/infrastructure/persistence app/schemas.py quoridor --no-error-summary
       - name: Provide Expert prior from the official Hard zip
