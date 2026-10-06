@@ -107,7 +107,7 @@ function stepDestinationsFrom(state: GameStateDTO, color: Color, pos: Pos): Pos[
   return dests;
 }
 
-function moveDestinations(state: GameStateDTO, color: Color, direction: Direction): Pos[] {
+export function moveDestinations(state: GameStateDTO, color: Color, direction: Direction): Pos[] {
   return stepDestinationsInDirection(state, color, pawn(state, color), direction);
 }
 

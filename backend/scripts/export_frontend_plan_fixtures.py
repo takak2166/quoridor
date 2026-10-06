@@ -6,7 +6,7 @@ import json
 from pathlib import Path
 
 from quoridor.domain.state import QuoridorState
-from tests.unit.fixtures.plan_fixtures import B1_CASES, JUMP_CASES, WALL_PATH_CASES
+from tests.unit.fixtures.plan_fixtures import B1_CASES, JUMP_CASES, WALL_PATH_CASES, WALL_STEP_CASES
 
 
 def _state_dto(state: QuoridorState) -> dict:
@@ -31,6 +31,7 @@ def main() -> None:
     repo_root = Path(__file__).resolve().parents[2]
     out_path = repo_root / "frontend" / "src" / "__fixtures__" / "planFixtures.generated.json"
 
+    jump_like = [*JUMP_CASES, *WALL_STEP_CASES]
     jump_cases = [
         {
             "id": case["id"],
@@ -38,7 +39,7 @@ def main() -> None:
             "direction": case["direction"],
             "expected": [list(pair) for pair in sorted(case["expected_destinations"])],
         }
-        for case in JUMP_CASES
+        for case in jump_like
     ]
 
     wall_cases = [
