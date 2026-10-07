@@ -5,26 +5,13 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from app.mappers.game_mapper import state_to_dto
 from quoridor.domain.state import QuoridorState
 from tests.unit.fixtures.plan_fixtures import B1_CASES, JUMP_CASES, WALL_PATH_CASES, WALL_STEP_CASES
 
 
 def _state_dto(state: QuoridorState) -> dict:
-    return {
-        "white": {
-            "row": state.white[0],
-            "col": state.white[1],
-            "walls_remaining": state.white_walls_remaining,
-        },
-        "black": {
-            "row": state.black[0],
-            "col": state.black[1],
-            "walls_remaining": state.black_walls_remaining,
-        },
-        "horizontal_walls": [list(row) for row in state.horizontal_walls],
-        "vertical_walls": [list(row) for row in state.vertical_walls],
-        "current_player": state.current_player,
-    }
+    return state_to_dto(state).model_dump()
 
 
 def main() -> None:

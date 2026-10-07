@@ -23,7 +23,10 @@ jobs:
         working-directory: backend
         run: |
           uv run python scripts/export_frontend_plan_fixtures.py
-          git diff --exit-code -- ../frontend/src/__fixtures__/planFixtures.generated.json
+          if ! git diff --exit-code -- ../frontend/src/__fixtures__/planFixtures.generated.json; then
+            echo "::error::planFixtures.generated.json is stale. Regenerate: cd backend && uv run python scripts/export_frontend_plan_fixtures.py"
+            exit 1
+          fi
       - run: uv run ruff check .
       - run: uv run mypy app/api app/services app/infrastructure/persistence app/schemas.py quoridor --no-error-summary
       - name: Provide Expert prior from the official Hard zip
