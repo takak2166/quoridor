@@ -80,6 +80,19 @@ JUMP_CASES = [
         "direction": "up",
         "expected_destinations": frozenset({(4, 4)}),
     },
+    {
+        "id": "J.7-DIAG-RIGHT-V-ONLY",
+        # Regression: a vertical wall on one lateral side must not block the other diagonal.
+        "state": build_state(
+            white=(5, 4),
+            black=(4, 4),
+            current="white",
+            h=frozenset({(3, 4)}),
+            v=frozenset({(4, 4)}),
+        ),
+        "direction": "up",
+        "expected_destinations": frozenset({(4, 3)}),
+    },
 ]
 
 B1_CASES = [

@@ -73,9 +73,7 @@ function stepDestinationsInDirection(
   }
 
   const jump: Pos = [adj[0] + dr, adj[1] + dc];
-  const allowStraightJump = adj[1] !== 0 && adj[1] !== 8;
   if (
-    allowStraightJump &&
     jump[0] >= 0 &&
     jump[0] <= 8 &&
     jump[1] >= 0 &&
@@ -96,14 +94,6 @@ function stepDestinationsInDirection(
     if (diag[0] < 0 || diag[0] > 8 || diag[1] < 0 || diag[1] > 8) continue;
     if (occupied.has(`${diag[0]},${diag[1]}`)) continue;
     if (!canStep(state, adj, diag)) continue;
-    if (
-      diag[1] < adj[1] &&
-      dr !== 0 &&
-      isHorizontalWall(state, adj[0] + dr, adj[1]) &&
-      (isVerticalWall(state, adj[0], adj[1]) || isVerticalWall(state, adj[0] - 1, adj[1]))
-    ) {
-      continue;
-    }
     diags.push(diag);
   }
   return diags;
@@ -117,7 +107,7 @@ function stepDestinationsFrom(state: GameStateDTO, color: Color, pos: Pos): Pos[
   return dests;
 }
 
-function moveDestinations(state: GameStateDTO, color: Color, direction: Direction): Pos[] {
+export function moveDestinations(state: GameStateDTO, color: Color, direction: Direction): Pos[] {
   return stepDestinationsInDirection(state, color, pawn(state, color), direction);
 }
 

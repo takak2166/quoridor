@@ -70,6 +70,10 @@ test-slow: install-rl ## pytest slow only (benchmarks, self-play)
 test-all: install-rl ## pytest (all tests)
 	cd $(BACKEND_DIR) && $(UV) run pytest -q
 
+.PHONY: export-frontend-fixtures
+export-frontend-fixtures: install-backend ## Sync frontend plan fixture JSON from backend
+	cd $(BACKEND_DIR) && $(UV) run python scripts/export_frontend_plan_fixtures.py
+
 .PHONY: lint
 lint: install-backend ## ruff check
 	cd $(BACKEND_DIR) && $(UV) run ruff check .
