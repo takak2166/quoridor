@@ -2,13 +2,15 @@ from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+_BACKEND_ENV_FILE = Path(__file__).resolve().parents[1] / ".env"
 _REPO_ROOT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="QUORIDOR_",
-        env_file=_REPO_ROOT_ENV_FILE,
+        # Backend-local first; repo-root wins on conflict (``make setup`` / ``make dev``).
+        env_file=(_BACKEND_ENV_FILE, _REPO_ROOT_ENV_FILE),
         extra="ignore",
     )
 
