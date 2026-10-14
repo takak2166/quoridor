@@ -21,6 +21,12 @@ def clear_game_repository() -> None:
         game_repository._sessions.clear()
 
 
+@pytest.fixture(autouse=True)
+def reset_ai_limiter_after_test() -> None:
+    yield
+    reset_process_ai_limiter_for_tests(limit=settings.ai_concurrent_limit)
+
+
 def test_parallel_create_via_get_game_service_respects_ai_limit(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
