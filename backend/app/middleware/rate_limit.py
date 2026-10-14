@@ -8,6 +8,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.config import settings
+from app.middleware.metrics import metrics_store
 from app.schemas import ErrorDetail, ErrorResponse
 
 
@@ -63,6 +64,7 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         return await call_next(request)
 
     def _rate_limited(self) -> JSONResponse:
+        metrics_store.record_rate_limit_rejected()
         body = ErrorResponse(
             error=ErrorDetail(code="RATE_LIMITED", message="Too many requests", details=None)
         )
