@@ -49,7 +49,7 @@ class PPOPolicy:
     _loop_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def is_available(self) -> bool:
-        return ppo_model_store.is_available(self.model_path)
+        return ppo_model_store.is_loadable(self.model_path)
 
     def clear_inference_session(self, session_id: str) -> None:
         with self._loop_lock:
