@@ -1,8 +1,16 @@
+from pathlib import Path
+
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_REPO_ROOT_ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_prefix="QUORIDOR_", env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(
+        env_prefix="QUORIDOR_",
+        env_file=_REPO_ROOT_ENV_FILE,
+        extra="ignore",
+    )
 
     model_hard: str = "models/quoridor_ppo_v1.zip"
     model_expert: str = "models/quoridor_ppo_best.zip"
