@@ -156,13 +156,13 @@ def enemy_two_wall_path_delta(
     cache: DistanceCache | None = None,
 ) -> int:
     """Enemy shortest-path growth after placing ``wall1`` then ``wall2``."""
-    from quoridor.rules import is_action_legal
+    from quoridor.rules import _wall_maintains_paths, _wall_passes_filters
 
     before = _enemy_distance(state, cache)
     if before is None:
         return 0
     temp = state.with_wall(wall1.orientation, wall1.row, wall1.col)
-    if not is_action_legal(temp, wall2):
+    if not _wall_passes_filters(temp, wall2) or not _wall_maintains_paths(temp, wall2, cache=cache):
         return 0
     temp2 = temp.with_wall(wall2.orientation, wall2.row, wall2.col)
     after = _enemy_distance(temp2, cache)
@@ -182,7 +182,7 @@ def wall_enables_path_lengthening(
     opponent_dist: dict[tuple[int, int], int] | None = None,
 ) -> bool:
     """True if ``wall`` alone, or with some partner, lengthens the enemy path."""
-    from quoridor.rules import is_action_legal
+    from quoridor.rules import _wall_maintains_paths, _wall_passes_filters
 
     if enemy_path_delta(state, wall, cache) > 0:
         return True
@@ -202,7 +202,9 @@ def wall_enables_path_lengthening(
     for partner in partner_walls:
         if _wall_key(partner) == wall_id:
             continue
-        if not is_action_legal(temp, partner):
+        if not _wall_passes_filters(temp, partner) or not _wall_maintains_paths(
+            temp, partner, cache=cache
+        ):
             continue
         temp2 = temp.with_wall(partner.orientation, partner.row, partner.col)
         after = _enemy_distance(temp2, cache)
