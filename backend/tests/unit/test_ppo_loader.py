@@ -31,6 +31,32 @@ def test_validate_ppo_model_rejects_action_space() -> None:
         _validate_ppo_model(model)
 
 
+def test_validate_ppo_model_rejects_observation_shape() -> None:
+    model = SimpleNamespace(
+        action_space=SimpleNamespace(n=NUM_ACTIONS),
+        observation_space=SimpleNamespace(shape=(128,)),
+    )
+    with pytest.raises(RuntimeError, match="observation space mismatch"):
+        _validate_ppo_model(model)
+
+
+def test_is_loadable_false_when_load_raises_keyerror(tmp_path: Path, monkeypatch) -> None:
+    model_file = tmp_path / "corrupt.zip"
+    model_file.write_bytes(b"placeholder")
+
+    from sb3_contrib import MaskablePPO
+
+    def fake_load(_path: str):
+        raise KeyError("missing policy payload")
+
+    monkeypatch.setattr(MaskablePPO, "load", fake_load)
+    monkeypatch.setattr(ppo_loader, "resolve_model_path", lambda _p: model_file)
+
+    store = PPOModelStore()
+    assert store.is_loadable("models/corrupt.zip") is False
+    assert "models/corrupt.zip" in store._missing
+
+
 def test_is_loadable_false_for_incompatible_zip(tmp_path: Path, monkeypatch) -> None:
     model_file = tmp_path / "bad.zip"
     model_file.write_bytes(b"placeholder")

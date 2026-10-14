@@ -77,7 +77,7 @@ class PPOModelStore:
         try:
             self.get(model_path)
             return True
-        except (FileNotFoundError, RuntimeError, OSError):
+        except (FileNotFoundError, RuntimeError, OSError, ValueError):
             return False
 
     def is_loaded(self, model_path: str) -> bool:
@@ -103,15 +103,13 @@ class PPOModelStore:
         logger.info("Loading PPO model from %s", resolved)
         try:
             model = MaskablePPO.load(str(resolved))
-        except (OSError, ValueError) as e:
-            self._missing.add(model_path)
-            raise RuntimeError(f"Failed to load PPO model from {resolved}") from e
-
-        try:
             _validate_ppo_model(model)
         except RuntimeError:
             self._missing.add(model_path)
             raise
+        except Exception as e:
+            self._missing.add(model_path)
+            raise RuntimeError(f"Failed to load PPO model from {resolved}") from e
 
         self._models[model_path] = model
         return model
