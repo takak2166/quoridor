@@ -50,6 +50,29 @@ def test_mcts_budget_stops_within_wall_clock() -> None:
     assert len(metrics_store.mcts_sim_count) == before + 1
 
 
+def test_mcts_prior_fn_called_once_per_tree_node() -> None:
+    ai = FakeAi()
+    calls = {"n": 0}
+    original = ai.action_prior
+
+    def counting_prior(state, color):
+        calls["n"] += 1
+        return original(state, color)
+
+    state = initial_state()
+    legal = get_legal_actions(state)
+    mcts_search(
+        state,
+        "black",
+        prior_fn=counting_prior,
+        value_fn=ai.value,
+        legal_actions=legal,
+        budget_ms=450,
+    )
+    assert calls["n"] >= 1
+    assert calls["n"] <= 80
+
+
 def test_mcts_expands_opponent_nodes_with_side_to_move_prior() -> None:
     """Priors must use the player to move; root-color encoding crashes on White moves."""
     ai = FakeAi()
