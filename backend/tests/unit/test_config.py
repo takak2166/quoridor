@@ -32,7 +32,6 @@ def test_settings_loads_repo_root_env_when_cwd_is_backend() -> None:
 
         child_env = os.environ.copy()
         child_env.pop(_ENV_KEY, None)
-        child_env.pop("QUORIDOR_", None)
 
         script = f"""
 import os
