@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import random
+import threading
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 import numpy as np
 from numpy.typing import NDArray
@@ -14,13 +15,40 @@ from quoridor.rules import get_legal_actions
 
 
 @dataclass
+class AiConcurrencyTracker:
+    _lock: threading.Lock = field(default_factory=threading.Lock, init=False, repr=False)
+    current: int = 0
+    peak: int = 0
+
+    def enter(self) -> None:
+        with self._lock:
+            self.current += 1
+            if self.current > self.peak:
+                self.peak = self.current
+
+    def leave(self) -> None:
+        with self._lock:
+            self.current -= 1
+
+
+@dataclass
 class FakeAiProvider:
     delay_ms: float = 0
     fail: bool = False
     exception_to_raise: Exception | None = None
     illegal_move: bool = False
+    concurrency_tracker: AiConcurrencyTracker | None = None
 
     def select_move(self, state: QuoridorState, color: Color) -> Action:
+        if self.concurrency_tracker is not None:
+            self.concurrency_tracker.enter()
+        try:
+            return self._select_move_body(state, color)
+        finally:
+            if self.concurrency_tracker is not None:
+                self.concurrency_tracker.leave()
+
+    def _select_move_body(self, state: QuoridorState, color: Color) -> Action:
         if self.delay_ms > 0:
             time.sleep(self.delay_ms / 1000)
         if self.fail:
