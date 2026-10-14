@@ -89,14 +89,10 @@ class PPOPolicy:
             return chosen
 
         if self.is_available():
-            try:
-                chosen = self._select_with_model(state, color, legal)
-                chosen = self._break_stall(state, color, legal, chosen)
-                self._remember_action(state, color, chosen)
-                return chosen
-            except Exception:
-                logger.exception("PPO inference failed for %s", self.model_path)
-                self._record_fallback()
+            chosen = self._select_with_model(state, color, legal)
+            chosen = self._break_stall(state, color, legal, chosen)
+            self._remember_action(state, color, chosen)
+            return chosen
         else:
             self._warn_missing_once()
             self._record_fallback()
@@ -123,11 +119,7 @@ class PPOPolicy:
 
         from_pos = state.pawn(color)
         if self.is_available():
-            try:
-                return self._prior_with_model(state, color, legal)
-            except Exception:
-                logger.exception("PPO prior failed for %s", self.model_path)
-                self._record_fallback()
+            return self._prior_with_model(state, color, legal)
         else:
             self._warn_missing_once()
             self._record_fallback()
@@ -139,11 +131,7 @@ class PPOPolicy:
 
     def value(self, state: QuoridorState, color: Color) -> float:
         if self.is_available():
-            try:
-                return self._value_with_model(state, color)
-            except Exception:
-                logger.exception("PPO value failed for %s", self.model_path)
-                self._record_fallback()
+            return self._value_with_model(state, color)
         else:
             self._warn_missing_once()
             self._record_fallback()

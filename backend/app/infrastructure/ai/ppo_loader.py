@@ -28,6 +28,29 @@ def _dependencies_ok() -> bool:
     return True
 
 
+EXPECTED_PPO_OBS_SHAPE: tuple[int, ...] = (135,)
+
+
+def _validate_ppo_model(model: object) -> None:
+    from quoridor.domain.actions import NUM_ACTIONS
+
+    action_space = getattr(model, "action_space", None)
+    action_n = getattr(action_space, "n", None)
+    if action_n != NUM_ACTIONS:
+        raise RuntimeError(
+            "PPO action space mismatch: "
+            f"expected Discrete({NUM_ACTIONS}), got {action_space!r}"
+        )
+
+    obs_space = getattr(model, "observation_space", None)
+    shape = getattr(obs_space, "shape", None)
+    if shape != EXPECTED_PPO_OBS_SHAPE:
+        raise RuntimeError(
+            "PPO observation space mismatch: "
+            f"expected shape {EXPECTED_PPO_OBS_SHAPE}, got {shape!r}"
+        )
+
+
 class PPOModelStore:
     def __init__(self) -> None:
         self._models: dict[str, object] = {}
@@ -78,7 +101,18 @@ class PPOModelStore:
             ) from e
 
         logger.info("Loading PPO model from %s", resolved)
-        model = MaskablePPO.load(str(resolved))
+        try:
+            model = MaskablePPO.load(str(resolved))
+        except (OSError, ValueError) as e:
+            self._missing.add(model_path)
+            raise RuntimeError(f"Failed to load PPO model from {resolved}") from e
+
+        try:
+            _validate_ppo_model(model)
+        except RuntimeError:
+            self._missing.add(model_path)
+            raise
+
         self._models[model_path] = model
         return model
 

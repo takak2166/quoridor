@@ -105,7 +105,7 @@ release-gate: ci-full ensure-models ## v0.2 release gate: ci-full + self-play ga
 .PHONY: ensure-models
 ensure-models: ## Ensure PPO model files exist (expert falls back to hard copy)
 	@test -f models/quoridor_ppo_v1.zip || (echo "Missing models/quoridor_ppo_v1.zip — run: make train-ppo" && exit 1)
-	@test -f models/quoridor_ppo_best.zip || cp models/quoridor_ppo_v1.zip models/quoridor_ppo_best.zip
+	cp -f models/quoridor_ppo_v1.zip models/quoridor_ppo_best.zip
 
 .PHONY: install-e2e
 install-e2e: install-rl ensure-models install-frontend ## E2E deps including Playwright browser + RL models
