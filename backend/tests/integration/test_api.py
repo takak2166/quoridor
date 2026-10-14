@@ -4,6 +4,7 @@ from concurrent.futures import ThreadPoolExecutor
 import pytest
 from fastapi.testclient import TestClient
 
+from app.infrastructure.persistence.game_repository import game_repository
 from app.main import create_app
 from app.services.game_service import GameService, get_game_service
 from tests.support.fake_ai import FakeAiProvider
@@ -154,9 +155,11 @@ def test_ai_failure_on_create_white_cpu_first(client: TestClient) -> None:
     svc = GameService(ai_factory=lambda _: FakeAiProvider(fail=True))
     app.dependency_overrides[get_game_service] = lambda: svc
     c = TestClient(app)
+    assert game_repository.active_count() == 0
     resp = c.post("/api/v1/games", json={"human_color": "white", "difficulty": "easy"})
     assert resp.status_code == 503
     assert resp.json()["detail"]["error"]["code"] == "AI_FAILURE"
+    assert game_repository.active_count() == 0
 
 
 def test_ai_unexpected_exception_preserves_prior_state(client: TestClient) -> None:
