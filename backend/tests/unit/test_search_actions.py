@@ -115,11 +115,14 @@ def test_two_phase_root_prefers_blocking_wall_in_corridor() -> None:
 
 
 def test_shortest_path_edges_blocked_matches_full_board_scan() -> None:
+    from app.infrastructure.ai.search_actions import (
+        _opponent_distances,
+        opponent,
+        shortest_path_edges_blocked,
+        split_legal_actions,
+    )
     from quoridor.board_topology import can_step
-
-    from app.infrastructure.ai.search_actions import shortest_path_edges_blocked, split_legal_actions
     from quoridor.domain.state import GOAL_ROW
-    from app.infrastructure.ai.search_actions import _opponent_distances, opponent
 
     def brute_force_blocked(state, wall, opponent_dist):
         player = state.current_player

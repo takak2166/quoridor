@@ -52,7 +52,7 @@ def _opponent_distances(state: QuoridorState, player: Color) -> dict[tuple[int, 
 
 
 def _step_pairs_blocked_by_wall(wall: WallSlot) -> list[tuple[tuple[int, int], tuple[int, int]]]:
-    """Directed pawn steps that a newly placed wall can block (at most four undirected edges)."""
+    """Directed pawn step pairs a newly placed wall can block (up to four pairs, two undirected edges)."""
     row, col = wall.row, wall.col
     if wall.orientation == "horizontal":
         return [
