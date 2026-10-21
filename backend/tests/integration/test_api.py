@@ -1,9 +1,12 @@
+import json
+import logging
 import time
 from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from fastapi.testclient import TestClient
 
+from app.infrastructure.persistence.game_repository import game_repository
 from app.main import create_app
 from app.services.game_service import GameService, get_game_service
 from tests.support.fake_ai import FakeAiProvider
@@ -154,9 +157,11 @@ def test_ai_failure_on_create_white_cpu_first(client: TestClient) -> None:
     svc = GameService(ai_factory=lambda _: FakeAiProvider(fail=True))
     app.dependency_overrides[get_game_service] = lambda: svc
     c = TestClient(app)
+    assert game_repository.active_count() == 0
     resp = c.post("/api/v1/games", json={"human_color": "white", "difficulty": "easy"})
     assert resp.status_code == 503
     assert resp.json()["detail"]["error"]["code"] == "AI_FAILURE"
+    assert game_repository.active_count() == 0
 
 
 def test_ai_unexpected_exception_preserves_prior_state(client: TestClient) -> None:
@@ -239,6 +244,28 @@ def test_rate_limit_response_shape(client: TestClient, monkeypatch: pytest.Monke
     second = client.post("/api/v1/games", json={"human_color": "black", "difficulty": "easy"})
     assert second.status_code == 429
     assert second.json()["detail"]["error"]["code"] == "RATE_LIMITED"
+
+
+def test_rate_limit_observability(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    from app.config import settings
+    from app.middleware.metrics import metrics_store
+
+    monkeypatch.setattr(settings, "rate_limit_games_per_min", 1)
+    rejected_before = metrics_store.rate_limit_rejected_total
+    with caplog.at_level(logging.INFO, logger="quoridor.access"):
+        client.post("/api/v1/games", json={"human_color": "black", "difficulty": "easy"})
+        second = client.post("/api/v1/games", json={"human_color": "black", "difficulty": "easy"})
+    assert second.status_code == 429
+    assert second.headers.get("X-Request-ID")
+    access_logs = [json.loads(record.message) for record in caplog.records if record.name == "quoridor.access"]
+    rate_limited_logs = [entry for entry in access_logs if entry["status_code"] == 429]
+    assert rate_limited_logs
+    assert any(entry.get("error", {}).get("code") == "RATE_LIMITED" for entry in rate_limited_logs)
+    assert metrics_store.rate_limit_rejected_total == rejected_before + 1
+    metrics_body = client.get("/metrics").text
+    assert "rate_limit_rejected_total" in metrics_body
 
 
 def test_wrong_turn(client: TestClient) -> None:

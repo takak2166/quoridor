@@ -15,6 +15,7 @@ class MetricsStore:
         self.ai_failure_total: int = 0
         self.ai_fallback_total: int = 0
         self.ai_rollback_total: int = 0
+        self.rate_limit_rejected_total: int = 0
         self.mcts_sim_count: list[int] = []
 
     def record_request(self, duration_s: float) -> None:
@@ -35,6 +36,9 @@ class MetricsStore:
 
     def record_ai_rollback(self) -> None:
         self.ai_rollback_total += 1
+
+    def record_rate_limit_rejected(self) -> None:
+        self.rate_limit_rejected_total += 1
 
     def record_mcts_sims(self, count: int) -> None:
         self.mcts_sim_count.append(count)
@@ -60,6 +64,9 @@ class MetricsStore:
             "# HELP ai_rollback_total Total game state rollbacks after AI failure",
             "# TYPE ai_rollback_total counter",
             f"ai_rollback_total {self.ai_rollback_total}",
+            "# HELP rate_limit_rejected_total Total requests rejected by rate limiting",
+            "# TYPE rate_limit_rejected_total counter",
+            f"rate_limit_rejected_total {self.rate_limit_rejected_total}",
         ]
         http_avg = self._avg(self.http_request_duration_seconds)
         if http_avg is not None:

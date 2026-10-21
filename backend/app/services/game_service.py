@@ -108,13 +108,15 @@ class GameService:
         cpu_move: MoveResponseDTO | None = None
         if req.human_color == "white":
             with session_record.lock:
-                snap = session_record.game.snapshot()
                 try:
                     cpu_move = self._play_cpu(session_record)
                 except GameServiceError as e:
                     if e.code == "AI_FAILURE":
                         self._metrics.record_ai_rollback()
-                        session_record.game.restore(snap)
+                    self._repository.delete(session_record.game_id)
+                    raise
+                except Exception:
+                    self._repository.delete(session_record.game_id)
                     raise
 
         return (

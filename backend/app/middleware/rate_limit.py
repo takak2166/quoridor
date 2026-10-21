@@ -8,6 +8,7 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse, Response
 
 from app.config import settings
+from app.middleware.metrics import metrics_store
 from app.schemas import ErrorDetail, ErrorResponse
 
 
@@ -56,13 +57,15 @@ class RateLimitMiddleware(BaseHTTPMiddleware):
         path = request.url.path
         if request.method == "POST" and path == "/api/v1/games":
             if not self._check(self._game_hits, ip, settings.rate_limit_games_per_min):
-                return self._rate_limited()
+                return self._rate_limited(request)
         if request.method == "POST" and path.endswith("/moves"):
             if not self._check(self._move_hits, ip, settings.rate_limit_moves_per_min):
-                return self._rate_limited()
+                return self._rate_limited(request)
         return await call_next(request)
 
-    def _rate_limited(self) -> JSONResponse:
+    def _rate_limited(self, request: Request) -> JSONResponse:
+        request.state.error_code = "RATE_LIMITED"
+        metrics_store.record_rate_limit_rejected()
         body = ErrorResponse(
             error=ErrorDetail(code="RATE_LIMITED", message="Too many requests", details=None)
         )

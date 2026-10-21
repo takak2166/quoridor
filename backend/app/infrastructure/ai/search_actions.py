@@ -162,7 +162,7 @@ def enemy_two_wall_path_delta(
     if before is None:
         return 0
     temp = state.with_wall(wall1.orientation, wall1.row, wall1.col)
-    if not _wall_passes_filters(temp, wall2) or not _wall_maintains_paths(temp, wall2, cache=cache):
+    if not _wall_passes_filters(temp, wall2) or not _wall_maintains_paths(temp, wall2, cache=None):
         return 0
     temp2 = temp.with_wall(wall2.orientation, wall2.row, wall2.col)
     after = _enemy_distance(temp2, cache)
@@ -203,7 +203,7 @@ def wall_enables_path_lengthening(
         if _wall_key(partner) == wall_id:
             continue
         if not _wall_passes_filters(temp, partner) or not _wall_maintains_paths(
-            temp, partner, cache=cache
+            temp, partner, cache=None
         ):
             continue
         temp2 = temp.with_wall(partner.orientation, partner.row, partner.col)
