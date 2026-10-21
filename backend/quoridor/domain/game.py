@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 from quoridor.domain.actions import Action
 from quoridor.domain.state import Color, QuoridorState
-from quoridor.rules import PlayResult, apply_action, check_winner, is_action_legal
+from quoridor.rules import PlayResult, apply_action, check_winner
 
 
 @dataclass(frozen=True)
@@ -34,8 +34,6 @@ class Game:
     def play(self, action: Action) -> PlayResult:
         if self.winner is not None:
             raise ValueError("game over")
-        if not is_action_legal(self.state, action):
-            raise ValueError("illegal move")
         new_state = apply_action(self.state, action)
         winner = check_winner(new_state)
         self.state = new_state
