@@ -6,6 +6,8 @@ UV            := uv
 PNPM          := pnpm
 BACKEND_PORT  ?= 8000
 FRONTEND_PORT ?= 5173
+# Normal vs Easy gate: mean win rate across seeds (time-bounded search → high variance).
+EVAL_SEEDS    ?= 97,17,88
 
 .PHONY: help
 help: ## List available targets
@@ -99,7 +101,7 @@ ci-full: ci test-slow test-e2e ## nightly / pre-release: ci + slow + E2E (incl. 
 
 .PHONY: release-gate
 release-gate: ci-full ensure-models ## v0.2 release gate: ci-full + self-play gates x2
-	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=easy MIN_WIN_RATE=0.55 MAX_P99_MS=500
+	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=easy SEEDS=$(EVAL_SEEDS) MIN_WIN_RATE=0.55 MAX_P99_MS=500
 	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=hard MAX_P99_MS=3000
 
 .PHONY: ensure-models
@@ -133,13 +135,14 @@ train-ppo-expert: install-rl ## Train Expert model (override TIMESTEPS, OPPONENT
 		--output $(or $(OUTPUT),../models/quoridor_ppo_best.zip)
 
 .PHONY: eval-selfplay
-eval-selfplay: install-rl ## Self-play eval (override GAMES, MIN_WIN_RATE=0.55)
+eval-selfplay: install-rl ## Self-play eval (SEEDS=97,17,88 for mean win-rate gate)
 	cd $(BACKEND_DIR) && $(UV) run python -m app.infrastructure.rl.eval_selfplay \
 		--games $(or $(GAMES),100) \
 		--difficulty-a $(or $(DIFF_A),easy) \
 		--difficulty-b $(or $(DIFF_B),normal) \
 		$(if $(MIN_WIN_RATE),--min-win-rate $(MIN_WIN_RATE),) \
 		$(if $(MAX_P99_MS),--max-p99-ms $(MAX_P99_MS),) \
+		$(if $(SEEDS),--seeds $(SEEDS),) \
 		$(if $(SEED),--seed $(SEED),) \
 		$(if $(MAX_MOVES),--max-moves $(MAX_MOVES),) \
 		$(if $(PROGRESS),--progress,)
