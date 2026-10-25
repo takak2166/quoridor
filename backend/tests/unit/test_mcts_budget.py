@@ -51,6 +51,7 @@ def test_mcts_budget_stops_within_wall_clock() -> None:
 
 
 def test_mcts_prior_fn_called_once_per_tree_node() -> None:
+    """Shallow legal set + fake clock forces _select_child; uncached prior_fn would exceed sims+1."""
     ai = FakeAi()
     calls = {"n": 0}
     original = ai.action_prior
@@ -60,17 +61,30 @@ def test_mcts_prior_fn_called_once_per_tree_node() -> None:
         return original(state, color)
 
     state = initial_state()
-    legal = get_legal_actions(state)
-    mcts_search(
-        state,
-        "black",
-        prior_fn=counting_prior,
-        value_fn=ai.value,
-        legal_actions=legal,
-        budget_ms=450,
-    )
-    assert calls["n"] >= 1
-    assert calls["n"] <= 80
+    legal = get_legal_actions(state)[:2]
+    before = len(metrics_store.mcts_sim_count)
+    clock = {"t": 0.0}
+
+    def fake_perf_counter() -> float:
+        clock["t"] += 0.01
+        return clock["t"]
+
+    with patch("app.infrastructure.ai.mcts.time.perf_counter", side_effect=fake_perf_counter):
+        clock["t"] = 0.0
+        mcts_search(
+            state,
+            "black",
+            prior_fn=counting_prior,
+            value_fn=ai.value,
+            legal_actions=legal,
+            budget_ms=450,
+        )
+
+    assert len(metrics_store.mcts_sim_count) == before + 1
+    sims = metrics_store.mcts_sim_count[-1]
+    assert sims > 5
+    # Uncached `_select_child` calls prior_fn about once per sim on a full root; cache stays << sims.
+    assert calls["n"] < sims
 
 
 def test_mcts_expands_opponent_nodes_with_side_to_move_prior() -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -11,6 +12,8 @@ from numpy.typing import NDArray
 from quoridor.domain.actions import Action, action_child_key, encode
 from quoridor.domain.state import Color, QuoridorState
 from quoridor.rules import apply_action
+
+PriorFn = Callable[[QuoridorState, Color], NDArray[np.floating]]
 
 
 @dataclass
@@ -23,23 +26,29 @@ class _MCTSNode:
     value_sum: float = 0.0
     children: dict[tuple[int, tuple[int, int] | None], _MCTSNode] = field(default_factory=dict)
     untried: list[Action] = field(default_factory=list)
-    prior_vector: NDArray[np.floating] | None = None
+    prior_vector: NDArray[np.floating] | None = field(default=None, compare=False, repr=False)
 
 
 def mcts_search(
     state: QuoridorState,
     color: Color,
-    prior_fn,
+    prior_fn: PriorFn,
     value_fn,
     legal_actions: list[Action],
     budget_ms: int = 450,
     c_puct: float = 1.4,
 ) -> Action:
+    """Run budgeted MCTS with PPO-style priors.
+
+    ``prior_fn`` must be deterministic for a given ``(state, player)`` pair for the
+    lifetime of the search tree; cached priors are not recomputed on revisits.
+    """
     from app.middleware.metrics import metrics_store
     from quoridor.pathfinding import SimpleDistanceCache
 
     dist_cache = SimpleDistanceCache()
     root = _MCTSNode(state=state, parent=None, action=None, player=color, untried=list(legal_actions))
+    # Warm the root prior before the budget loop (side effect only; used on first expansion/select).
     _ensure_prior_vector(root, prior_fn)
     deadline = time.perf_counter() + budget_ms / 1000
     sims = 0
@@ -87,7 +96,7 @@ def mcts_search(
     return best.action  # type: ignore[return-value]
 
 
-def _ensure_prior_vector(node: _MCTSNode, prior_fn) -> NDArray[np.floating]:
+def _ensure_prior_vector(node: _MCTSNode, prior_fn: PriorFn) -> NDArray[np.floating]:
     if node.prior_vector is None:
         node.prior_vector = prior_fn(node.state, node.player)
     return node.prior_vector
@@ -131,7 +140,7 @@ def _pick_expansion(
     return node.untried.pop()
 
 
-def _select_child(node: _MCTSNode, root_color: Color, c_puct: float, prior_fn) -> _MCTSNode:
+def _select_child(node: _MCTSNode, root_color: Color, c_puct: float, prior_fn: PriorFn) -> _MCTSNode:
     total = sum(child.visits for child in node.children.values())
     child_actions = [child.action for child in node.children.values() if child.action is not None]
     from_pos = node.state.pawn(node.player)
