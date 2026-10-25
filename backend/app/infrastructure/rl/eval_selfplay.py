@@ -58,7 +58,8 @@ def run_eval(
         from app.infrastructure.ai.inference_context import inference_session
 
         game_t0 = time.perf_counter()
-        with inference_session(f"eval-{i}"):
+        session_key = f"eval-{seed}-{i}" if seed is not None else f"eval-{i}"
+        with inference_session(session_key):
             while not game.is_finished:
                 if max_moves is not None and moves >= max_moves:
                     break
@@ -150,6 +151,95 @@ def run_eval(
     return result
 
 
+def run_eval_multi_seed(
+    games: int,
+    difficulty_a: str,
+    difficulty_b: str,
+    seeds: list[int],
+    *,
+    min_win_rate: float | None = None,
+    max_p99_ms: float | None = None,
+    max_moves: int | None = None,
+    debug: bool = False,
+    progress: bool = False,
+    stop_after_repetition: bool = False,
+    scoresheet_dir: str | Path | None = None,
+    scoresheet_losses_only: bool = False,
+) -> dict[str, float]:
+    """Run self-play once per seed (sequentially) and gate on mean win rate."""
+    if not seeds:
+        raise ValueError("seeds must be non-empty")
+
+    per_seed: list[dict[str, float]] = []
+    for seed in seeds:
+        seed_scoresheet = None
+        if scoresheet_dir is not None:
+            seed_scoresheet = Path(scoresheet_dir) / f"seed_{seed}"
+        one = run_eval(
+            games,
+            difficulty_a,
+            difficulty_b,
+            min_win_rate=None,
+            max_p99_ms=None,
+            max_moves=max_moves,
+            debug=debug,
+            progress=progress,
+            stop_after_repetition=stop_after_repetition,
+            seed=seed,
+            scoresheet_dir=seed_scoresheet,
+            scoresheet_losses_only=scoresheet_losses_only,
+        )
+        per_seed.append(one)
+        print(
+            f"seed {seed}: {difficulty_a} win rate {one['win_rate']:.2%}, "
+            f"P99 {one['p99_ms']:.1f}ms, timeouts {int(one['timeouts'])}",
+            flush=True,
+        )
+        if stop_after_repetition and one["repetition_events"] > 0:
+            print(
+                f"Stopping multi-seed run after repetition in seed {seed}.",
+                flush=True,
+            )
+            break
+
+    avg_win_rate = sum(r["win_rate"] for r in per_seed) / len(per_seed)
+    max_p99 = max(r["p99_ms"] for r in per_seed)
+    total_timeouts = sum(int(r["timeouts"]) for r in per_seed)
+    gate_note = f", gate min {min_win_rate:.0%}" if min_win_rate is not None else ""
+    print(
+        f"Seeds {seeds}: mean {difficulty_a} win rate {avg_win_rate:.2%}{gate_note}, "
+        f"max P99 {max_p99:.1f}ms",
+        flush=True,
+    )
+
+    if min_win_rate is not None and avg_win_rate < min_win_rate:
+        raise SystemExit(
+            f"Mean win rate gate failed: {difficulty_a} {avg_win_rate:.2%} < {min_win_rate:.2%} "
+            f"across seeds {seeds}"
+        )
+    if max_p99_ms is not None and max_p99 > max_p99_ms:
+        raise SystemExit(
+            f"Latency gate failed: max P99 {max_p99:.1f}ms > {max_p99_ms:.1f}ms across seeds {seeds}"
+        )
+
+    return {
+        "games": float(games * len(seeds)),
+        "win_rate": avg_win_rate,
+        "p95_ms": max(r["p95_ms"] for r in per_seed),
+        "p99_ms": max_p99,
+        "timeouts": float(total_timeouts),
+        "finished": sum(r["finished"] for r in per_seed),
+        "repetition_events": sum(r["repetition_events"] for r in per_seed),
+        "seeds": float(len(seeds)),
+    }
+
+
+def _parse_seeds(raw: str | None) -> list[int] | None:
+    if raw is None or not raw.strip():
+        return None
+    return [int(part.strip()) for part in raw.split(",") if part.strip()]
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--games", type=int, default=100)
@@ -171,6 +261,12 @@ def main() -> None:
     )
     parser.add_argument("--seed", type=int, default=None, help="Seed RNG for reproducibility")
     parser.add_argument(
+        "--seeds",
+        type=str,
+        default=None,
+        help="Comma-separated seeds; run sequentially and gate on mean win rate",
+    )
+    parser.add_argument(
         "--scoresheet-dir",
         type=str,
         default=None,
@@ -182,21 +278,42 @@ def main() -> None:
         help="When dumping scoresheets, keep only Hard losses",
     )
     args = parser.parse_args()
+    if args.seed is not None and args.seeds:
+        parser.error("use either --seed or --seeds, not both")
 
-    result = run_eval(
-        args.games,
-        args.difficulty_a,
-        args.difficulty_b,
-        min_win_rate=args.min_win_rate,
-        max_p99_ms=args.max_p99_ms,
-        max_moves=args.max_moves,
-        debug=args.debug,
-        progress=args.progress,
-        stop_after_repetition=args.stop_after_repetition,
-        seed=args.seed,
-        scoresheet_dir=args.scoresheet_dir,
-        scoresheet_losses_only=args.scoresheet_losses_only,
-    )
+    seeds: list[int] | None = None
+    if args.seeds is not None:
+        seeds = _parse_seeds(args.seeds)
+        if not seeds:
+            parser.error("--seeds requires at least one integer seed")
+    eval_kwargs = {
+        "max_moves": args.max_moves,
+        "debug": args.debug,
+        "progress": args.progress,
+        "stop_after_repetition": args.stop_after_repetition,
+        "scoresheet_dir": args.scoresheet_dir,
+        "scoresheet_losses_only": args.scoresheet_losses_only,
+    }
+    if seeds:
+        result = run_eval_multi_seed(
+            args.games,
+            args.difficulty_a,
+            args.difficulty_b,
+            seeds,
+            min_win_rate=args.min_win_rate,
+            max_p99_ms=args.max_p99_ms,
+            **eval_kwargs,
+        )
+    else:
+        result = run_eval(
+            args.games,
+            args.difficulty_a,
+            args.difficulty_b,
+            min_win_rate=args.min_win_rate,
+            max_p99_ms=args.max_p99_ms,
+            seed=args.seed,
+            **eval_kwargs,
+        )
     print(f"Games: {int(result['games'])}")
     print(f"Finished: {int(result['finished'])} (timeouts: {int(result['timeouts'])})")
     print(f"{args.difficulty_a} win rate: {result['win_rate']:.2%}")
