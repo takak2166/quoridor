@@ -51,7 +51,7 @@ dev-backend: install-rl ## FastAPI dev server (:$(BACKEND_PORT))
 
 .PHONY: dev-frontend
 dev-frontend: install-frontend ## Vite dev server (:$(FRONTEND_PORT))
-	cd $(FRONTEND_DIR) && $(PNPM) dev --port $(FRONTEND_PORT) --host
+	cd $(FRONTEND_DIR) && BACKEND_PORT=$(BACKEND_PORT) $(PNPM) dev --port $(FRONTEND_PORT) --host
 
 # --- Tests & quality ---
 
