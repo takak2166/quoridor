@@ -32,9 +32,9 @@ def test_validate_ppo_model_rejects_multibinary_action_space() -> None:
         _validate_ppo_model(model)
 
 
-def test_validate_ppo_model_rejects_action_space() -> None:
+def test_validate_ppo_model_rejects_wrong_action_count() -> None:
     model = SimpleNamespace(
-        action_space=SimpleNamespace(n=132),
+        action_space=Discrete(132),
         observation_space=SimpleNamespace(shape=EXPECTED_PPO_OBS_SHAPE),
     )
     with pytest.raises(RuntimeError, match="action space mismatch"):
@@ -73,7 +73,7 @@ def test_is_loadable_false_for_incompatible_zip(tmp_path: Path, monkeypatch) -> 
 
     def fake_load(_path: str):
         return SimpleNamespace(
-            action_space=SimpleNamespace(n=132),
+            action_space=Discrete(132),
             observation_space=SimpleNamespace(shape=EXPECTED_PPO_OBS_SHAPE),
         )
 
@@ -100,7 +100,7 @@ def test_is_loadable_retries_after_checkpoint_replaced(tmp_path: Path, monkeypat
     def fake_load(_path: str):
         if model_file.read_bytes() == b"v1":
             return SimpleNamespace(
-                action_space=SimpleNamespace(n=132),
+                action_space=Discrete(132),
                 observation_space=SimpleNamespace(shape=EXPECTED_PPO_OBS_SHAPE),
             )
         return SimpleNamespace(
@@ -139,7 +139,7 @@ def test_health_ready_marks_incompatible_expert_not_loadable(
     def fake_load(path: str):
         if path.endswith("bad.zip"):
             return SimpleNamespace(
-                action_space=SimpleNamespace(n=132),
+                action_space=Discrete(132),
                 observation_space=SimpleNamespace(shape=EXPECTED_PPO_OBS_SHAPE),
             )
         return SimpleNamespace(
