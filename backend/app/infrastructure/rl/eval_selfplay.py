@@ -58,7 +58,8 @@ def run_eval(
         from app.infrastructure.ai.inference_context import inference_session
 
         game_t0 = time.perf_counter()
-        with inference_session(f"eval-{i}"):
+        session_key = f"eval-{seed}-{i}" if seed is not None else f"eval-{i}"
+        with inference_session(session_key):
             while not game.is_finished:
                 if max_moves is not None and moves >= max_moves:
                     break
@@ -171,6 +172,9 @@ def run_eval_multi_seed(
 
     per_seed: list[dict[str, float]] = []
     for seed in seeds:
+        seed_scoresheet = None
+        if scoresheet_dir is not None:
+            seed_scoresheet = Path(scoresheet_dir) / f"seed_{seed}"
         one = run_eval(
             games,
             difficulty_a,
@@ -182,7 +186,7 @@ def run_eval_multi_seed(
             progress=progress,
             stop_after_repetition=stop_after_repetition,
             seed=seed,
-            scoresheet_dir=scoresheet_dir,
+            scoresheet_dir=seed_scoresheet,
             scoresheet_losses_only=scoresheet_losses_only,
         )
         per_seed.append(one)
@@ -191,6 +195,12 @@ def run_eval_multi_seed(
             f"P99 {one['p99_ms']:.1f}ms, timeouts {int(one['timeouts'])}",
             flush=True,
         )
+        if stop_after_repetition and one["repetition_events"] > 0:
+            print(
+                f"Stopping multi-seed run after repetition in seed {seed}.",
+                flush=True,
+            )
+            break
 
     avg_win_rate = sum(r["win_rate"] for r in per_seed) / len(per_seed)
     max_p99 = max(r["p99_ms"] for r in per_seed)
@@ -271,7 +281,11 @@ def main() -> None:
     if args.seed is not None and args.seeds:
         parser.error("use either --seed or --seeds, not both")
 
-    seeds = _parse_seeds(args.seeds)
+    seeds: list[int] | None = None
+    if args.seeds is not None:
+        seeds = _parse_seeds(args.seeds)
+        if not seeds:
+            parser.error("--seeds requires at least one integer seed")
     eval_kwargs = {
         "max_moves": args.max_moves,
         "debug": args.debug,
