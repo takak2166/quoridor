@@ -64,7 +64,7 @@ def test_is_loadable_false_when_load_raises_keyerror(tmp_path: Path, monkeypatch
 
     store = PPOModelStore()
     assert store.is_loadable("models/corrupt.zip") is False
-    assert "models/corrupt.zip" in store._missing_mtime
+    assert "models/corrupt.zip" in store._missing_fingerprint
 
 
 def test_is_loadable_false_for_incompatible_zip(tmp_path: Path, monkeypatch) -> None:
@@ -88,7 +88,7 @@ def test_is_loadable_false_for_incompatible_zip(tmp_path: Path, monkeypatch) -> 
 
     store = PPOModelStore()
     assert store.is_loadable("models/bad.zip") is False
-    assert "models/bad.zip" in store._missing_mtime
+    assert "models/bad.zip" in store._missing_fingerprint
 
 
 def test_is_loadable_retries_after_checkpoint_replaced(tmp_path: Path, monkeypatch) -> None:
@@ -122,6 +122,38 @@ def test_is_loadable_retries_after_checkpoint_replaced(tmp_path: Path, monkeypat
     assert store.is_loadable("models/model.zip") is True
 
 
+def test_is_loadable_retries_when_size_changes_at_same_mtime(
+    tmp_path: Path, monkeypatch
+) -> None:
+    model_file = tmp_path / "model.zip"
+    model_file.write_bytes(b"v1")
+
+    from sb3_contrib import MaskablePPO
+
+    def fake_load(_path: str):
+        data = model_file.read_bytes()
+        if data == b"v1":
+            raise RuntimeError("incompatible v1")
+        return SimpleNamespace(
+            action_space=Discrete(NUM_ACTIONS),
+            observation_space=SimpleNamespace(shape=EXPECTED_PPO_OBS_SHAPE),
+        )
+
+    monkeypatch.setattr(MaskablePPO, "load", fake_load)
+    monkeypatch.setattr(ppo_loader, "resolve_model_path", lambda _p: model_file)
+
+    store = PPOModelStore()
+    assert store.is_loadable("models/model.zip") is False
+
+    import os
+
+    fixed_mtime = model_file.stat().st_mtime
+    model_file.write_bytes(b"v2-valid-checkpoint")
+    os.utime(model_file, (fixed_mtime, fixed_mtime))
+
+    assert store.is_loadable("models/model.zip") is True
+
+
 def test_health_ready_marks_incompatible_expert_not_loadable(
     tmp_path: Path, monkeypatch
 ) -> None:
@@ -151,7 +183,7 @@ def test_health_ready_marks_incompatible_expert_not_loadable(
 
     monkeypatch.setattr(MaskablePPO, "load", fake_load)
     ppo_model_store._models.clear()
-    ppo_model_store._missing_mtime.clear()
+    ppo_model_store._missing_fingerprint.clear()
 
     monkeypatch.setattr(settings, "model_hard", str(good))
     monkeypatch.setattr(settings, "model_expert", str(bad))
