@@ -49,6 +49,31 @@ class GameServiceError(Exception):
 
 AiFactory = Callable[[Difficulty], AiPolicy]
 
+_process_ai_limiter: threading.Semaphore | None = None
+_process_ai_limiter_lock = threading.Lock()
+
+
+def get_process_ai_limiter() -> threading.Semaphore:
+    global _process_ai_limiter
+    if _process_ai_limiter is None:
+        with _process_ai_limiter_lock:
+            if _process_ai_limiter is None:
+                _process_ai_limiter = threading.Semaphore(settings.ai_concurrent_limit)
+    return _process_ai_limiter
+
+
+def reset_process_ai_limiter_for_tests(*, limit: int | None = None) -> threading.Semaphore:
+    """Test-only: replace the process-wide AI semaphore.
+
+    Existing ``GameService`` instances keep their previous semaphore reference;
+    only new calls to ``get_process_ai_limiter()`` / new services see the reset.
+    """
+    global _process_ai_limiter
+    with _process_ai_limiter_lock:
+        value = settings.ai_concurrent_limit if limit is None else limit
+        _process_ai_limiter = threading.Semaphore(value)
+    return _process_ai_limiter
+
 
 @dataclass
 class _NullMetrics:
@@ -79,7 +104,7 @@ class GameService:
             repository if repository is not None else game_repository,
         )
         self._metrics = cast(MetricsPort, metrics if metrics is not None else _NullMetrics())
-        self._ai_limiter = ai_limiter if ai_limiter is not None else threading.Semaphore(settings.ai_concurrent_limit)
+        self._ai_limiter = ai_limiter if ai_limiter is not None else get_process_ai_limiter()
 
     def _cpu_color(self, human_color: Color) -> Color:
         return "black" if human_color == "white" else "white"
@@ -269,5 +294,4 @@ def get_game_service() -> GameService:
     return GameService(
         repository=cast(GameRepositoryPort, game_repository),
         metrics=metrics_store,
-        ai_limiter=threading.Semaphore(settings.ai_concurrent_limit),
     )
