@@ -8,17 +8,8 @@ from fastapi.testclient import TestClient
 from app.config import settings
 from app.infrastructure.persistence.game_repository import game_repository
 from app.main import create_app
-from app.services.game_service import get_process_ai_limiter, reset_process_ai_limiter_for_tests
+from app.services.game_service import reset_process_ai_limiter_for_tests
 from tests.support.fake_ai import AiConcurrencyTracker, FakeAiProvider
-
-
-@pytest.fixture(autouse=True)
-def clear_game_repository() -> None:
-    with game_repository._lock:
-        game_repository._sessions.clear()
-    yield
-    with game_repository._lock:
-        game_repository._sessions.clear()
 
 
 @pytest.fixture(autouse=True)
@@ -52,8 +43,9 @@ def test_parallel_create_via_get_game_service_respects_ai_limit(
         statuses = list(pool.map(lambda _: create_white_game(), range(6)))
 
     assert tracker.peak <= settings.ai_concurrent_limit
+    assert tracker.peak >= 1
     assert all(status in {201, 503} for status in statuses)
-    assert get_process_ai_limiter() is get_process_ai_limiter()
+    assert 201 in statuses
 
 
 def test_ai_concurrency_limit_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -131,4 +123,6 @@ def test_parallel_play_move_via_get_game_service_respects_ai_limit(
         )
 
     assert tracker.peak <= settings.ai_concurrent_limit
+    assert tracker.peak >= 1
     assert all(status in {200, 503} for status in statuses)
+    assert 200 in statuses

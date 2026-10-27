@@ -63,6 +63,11 @@ def get_process_ai_limiter() -> threading.Semaphore:
 
 
 def reset_process_ai_limiter_for_tests(*, limit: int | None = None) -> threading.Semaphore:
+    """Test-only: replace the process-wide AI semaphore.
+
+    Existing ``GameService`` instances keep their previous semaphore reference;
+    only new calls to ``get_process_ai_limiter()`` / new services see the reset.
+    """
     global _process_ai_limiter
     with _process_ai_limiter_lock:
         value = settings.ai_concurrent_limit if limit is None else limit
