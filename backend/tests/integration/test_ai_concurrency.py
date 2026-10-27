@@ -6,7 +6,6 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.config import settings
-from app.infrastructure.persistence.game_repository import game_repository
 from app.main import create_app
 from app.services.game_service import reset_process_ai_limiter_for_tests
 from tests.support.fake_ai import AiConcurrencyTracker, FakeAiProvider
