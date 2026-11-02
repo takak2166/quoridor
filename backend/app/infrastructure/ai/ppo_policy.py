@@ -49,6 +49,8 @@ class PPOPolicy:
     _loop_lock: threading.Lock = field(default_factory=threading.Lock, repr=False)
 
     def is_available(self) -> bool:
+        if ppo_model_store.is_loaded(self.model_path):
+            return True
         return ppo_model_store.is_loadable(self.model_path)
 
     def clear_inference_session(self, session_id: str) -> None:
@@ -89,10 +91,14 @@ class PPOPolicy:
             return chosen
 
         if self.is_available():
-            chosen = self._select_with_model(state, color, legal)
-            chosen = self._break_stall(state, color, legal, chosen)
-            self._remember_action(state, color, chosen)
-            return chosen
+            try:
+                chosen = self._select_with_model(state, color, legal)
+                chosen = self._break_stall(state, color, legal, chosen)
+                self._remember_action(state, color, chosen)
+                return chosen
+            except Exception:
+                logger.exception("PPO inference failed for %s", self.model_path)
+                self._record_fallback()
         else:
             self._warn_missing_once()
             self._record_fallback()
@@ -119,7 +125,11 @@ class PPOPolicy:
 
         from_pos = state.pawn(color)
         if self.is_available():
-            return self._prior_with_model(state, color, legal)
+            try:
+                return self._prior_with_model(state, color, legal)
+            except Exception:
+                logger.exception("PPO prior failed for %s", self.model_path)
+                self._record_fallback()
         else:
             self._warn_missing_once()
             self._record_fallback()
@@ -131,7 +141,11 @@ class PPOPolicy:
 
     def value(self, state: QuoridorState, color: Color) -> float:
         if self.is_available():
-            return self._value_with_model(state, color)
+            try:
+                return self._value_with_model(state, color)
+            except Exception:
+                logger.exception("PPO value failed for %s", self.model_path)
+                self._record_fallback()
         else:
             self._warn_missing_once()
             self._record_fallback()

@@ -6,7 +6,8 @@ Human vs CPU Quoridor web app (FastAPI + Vite/TypeScript + Minimax / PPO / MCTS)
 
 - Python 3.12 + [uv](https://docs.astral.sh/uv/)
 - Node.js **20 LTS** + pnpm
-- On first run, `make setup` copies `.env.example` to `.env`
+- On first run, `make setup` copies `.env.example` to `.env` at the **repository root** (backend settings read that file even when `make dev-backend` runs from `backend/`).
+- If you used a local `backend/.env` before, copy those variables into the root `.env` and remove `backend/.env`.
 
 Run `make help` for the full target list.
 

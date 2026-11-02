@@ -19,9 +19,10 @@ def create_app() -> FastAPI:
         raise RuntimeError("CORS wildcard not allowed in production")
 
     app = FastAPI(title="Quoridor API", version="0.1.0")
-    app.add_middleware(LoggingMiddleware)
-    app.add_middleware(MetricsMiddleware)
+    # Starlette runs the last-added middleware outermost; rate limit stays innermost.
     app.add_middleware(RateLimitMiddleware)
+    app.add_middleware(MetricsMiddleware)
+    app.add_middleware(LoggingMiddleware)
     app.add_middleware(
         CORSMiddleware,
         allow_origins=settings.cors_origin_list,

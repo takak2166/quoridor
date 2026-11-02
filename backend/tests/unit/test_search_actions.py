@@ -1,6 +1,9 @@
+from dataclasses import replace
+
 from quoridor.domain.actions import Move, WallSlot
+from quoridor.pathfinding import SimpleDistanceCache, distances
 from quoridor.rules import get_legal_actions
-from tests.unit.fixtures.plan_fixtures import build_state
+from tests.unit.fixtures.plan_fixtures import build_state, seed3_wall_separated_choke
 
 
 def test_prioritize_walls_puts_path_lengthening_walls_first() -> None:
@@ -118,3 +121,25 @@ def test_opening_corridor_wall_ranks_near_opponent_goal() -> None:
     _, walls = split_legal_actions(get_legal_actions(state))
     ranked = prioritize_wall_actions(state, walls, cache=None, limit=5)
     assert ranked[0] == WallSlot(orientation="horizontal", row=7, col=3)
+
+
+def test_two_wall_delta_ignores_evaluation_distance_cache_for_legality() -> None:
+    """Prepopulated evaluation distances must not skip strict wall-legality checks."""
+    from app.infrastructure.ai.search_actions import enemy_two_wall_path_delta
+
+    state = replace(seed3_wall_separated_choke(), current_player="black")
+    state = replace(
+        state,
+        horizontal_walls=tuple(
+            tuple(False if (row, col) in {(0, 2), (0, 4)} else cell for col, cell in enumerate(row_cells))
+            for row, row_cells in enumerate(state.horizontal_walls)
+        ),
+    )
+    first = WallSlot(orientation="horizontal", row=0, col=4)
+    second = WallSlot(orientation="horizontal", row=0, col=2)
+    temp = state.with_wall(first.orientation, first.row, first.col)
+    final_state = temp.with_wall(second.orientation, second.row, second.col)
+    cache = SimpleDistanceCache()
+    distances(final_state, cache)
+    assert enemy_two_wall_path_delta(state, first, second, cache=None) == 0
+    assert enemy_two_wall_path_delta(state, first, second, cache=cache) == 0

@@ -58,36 +58,41 @@ def _validate_ppo_model(model: object) -> None:
         )
 
 
+def _checkpoint_fingerprint(path: Path) -> tuple[float, int]:
+    stat = path.stat()
+    return (stat.st_mtime, stat.st_size)
+
+
 class PPOModelStore:
     def __init__(self) -> None:
         self._models: dict[str, object] = {}
-        self._missing_mtime: dict[str, float] = {}
+        self._missing_fingerprint: dict[str, tuple[float, int]] = {}
 
     def _clear_missing_if_file_changed(self, model_path: str) -> None:
-        failed_at = self._missing_mtime.get(model_path)
+        failed_at = self._missing_fingerprint.get(model_path)
         if failed_at is None:
             return
         resolved = resolve_model_path(model_path)
         if not resolved.exists():
-            self._missing_mtime.pop(model_path, None)
+            self._missing_fingerprint.pop(model_path, None)
             return
         try:
-            current_mtime = resolved.stat().st_mtime
+            current = _checkpoint_fingerprint(resolved)
         except OSError:
-            self._missing_mtime.pop(model_path, None)
+            self._missing_fingerprint.pop(model_path, None)
             return
-        if current_mtime != failed_at:
-            self._missing_mtime.pop(model_path, None)
+        if current != failed_at:
+            self._missing_fingerprint.pop(model_path, None)
 
     def _record_missing(self, model_path: str) -> None:
         resolved = resolve_model_path(model_path)
         if resolved.exists():
             try:
-                self._missing_mtime[model_path] = resolved.stat().st_mtime
+                self._missing_fingerprint[model_path] = _checkpoint_fingerprint(resolved)
             except OSError:
-                self._missing_mtime[model_path] = -1.0
+                self._missing_fingerprint[model_path] = (-1.0, -1)
         else:
-            self._missing_mtime[model_path] = -1.0
+            self._missing_fingerprint[model_path] = (-1.0, -1)
 
     def file_present(self, model_path: str) -> bool:
         return resolve_model_path(model_path).exists()
@@ -101,7 +106,7 @@ class PPOModelStore:
             return False
         if not self.dependencies_ok():
             return False
-        if model_path in self._missing_mtime:
+        if model_path in self._missing_fingerprint:
             return False
         return True
 
@@ -111,7 +116,8 @@ class PPOModelStore:
         try:
             self.get(model_path)
             return True
-        except (FileNotFoundError, RuntimeError, OSError, ValueError):
+        except (FileNotFoundError, RuntimeError, OSError, ValueError) as exc:
+            logger.warning("PPO model not loadable (%s): %s", model_path, exc)
             return False
 
     def is_loaded(self, model_path: str) -> bool:
@@ -145,7 +151,7 @@ class PPOModelStore:
             self._record_missing(model_path)
             raise RuntimeError(f"Failed to load PPO model from {resolved}") from e
 
-        self._missing_mtime.pop(model_path, None)
+        self._missing_fingerprint.pop(model_path, None)
         self._models[model_path] = model
         return model
 
