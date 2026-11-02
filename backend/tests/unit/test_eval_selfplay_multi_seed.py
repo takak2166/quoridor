@@ -25,6 +25,8 @@ def test_run_eval_multi_seed_averages_win_rate_and_gates() -> None:
         result = run_eval_multi_seed(10, "normal", "easy", [97, 17, 88], min_win_rate=0.48)
     assert calls == [97, 17, 88]
     assert result["win_rate"] == pytest.approx(0.50)
+    assert result["games"] == pytest.approx(30.0)
+    assert result["seeds"] == pytest.approx(3.0)
 
 
 def test_run_eval_multi_seed_gate_fails_on_mean() -> None:
@@ -73,26 +75,28 @@ def test_run_eval_multi_seed_uses_per_seed_scoresheet_dir() -> None:
 def test_run_eval_multi_seed_stops_after_repetition() -> None:
     calls: list[int] = []
 
-    def fake_run_eval(*args, **kwargs):
+    def fake_run_eval(games, *args, **kwargs):
         seed = kwargs["seed"]
         calls.append(seed)
         reps = 1.0 if seed == 97 else 0.0
         return {
-            "games": 1.0,
+            "games": float(games),
             "win_rate": 0.5,
             "p95_ms": 1.0,
             "p99_ms": 1.0,
             "timeouts": 0.0,
-            "finished": 1.0,
+            "finished": float(games),
             "repetition_events": reps,
         }
 
     with patch("app.infrastructure.rl.eval_selfplay.run_eval", side_effect=fake_run_eval):
-        run_eval_multi_seed(
-            1,
+        result = run_eval_multi_seed(
+            10,
             "normal",
             "easy",
             [97, 17, 88],
             stop_after_repetition=True,
         )
     assert calls == [97]
+    assert result["games"] == pytest.approx(10.0)
+    assert result["seeds"] == pytest.approx(1.0)

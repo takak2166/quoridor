@@ -101,6 +101,7 @@ ci-full: ci test-slow test-e2e ## nightly / pre-release: ci + slow + E2E (incl. 
 
 .PHONY: release-gate
 release-gate: ci-full ensure-models ## v0.2 release gate: ci-full + self-play gates x2
+	@test -n "$(strip $(EVAL_SEEDS))" || (echo "release-gate: EVAL_SEEDS must be non-empty for multi-seed mean win-rate gate" && exit 1)
 	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=easy SEEDS=$(EVAL_SEEDS) MIN_WIN_RATE=0.55 MAX_P99_MS=500
 	$(MAKE) eval-selfplay GAMES=100 DIFF_A=normal DIFF_B=hard MAX_P99_MS=3000
 

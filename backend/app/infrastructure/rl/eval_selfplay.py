@@ -123,16 +123,17 @@ def run_eval(
             print(f"Stopping after repetition captured in game {i + 1}.", flush=True)
             break
 
+    played = len(latencies)
     latencies.sort()
     p95_idx = int(0.95 * (len(latencies) - 1)) if latencies else 0
     p99_idx = min(int(len(latencies) * 0.99), len(latencies) - 1) if latencies else 0
     p95 = latencies[p95_idx] if latencies else 0.0
     p99 = latencies[p99_idx] if latencies else 0.0
-    win_rate = wins_a / games if games else 0.0
-    finished = games - timeouts
+    win_rate = wins_a / played if played else 0.0
+    finished = played - timeouts
 
     result = {
-        "games": float(games),
+        "games": float(played),
         "win_rate": win_rate,
         "p95_ms": p95,
         "p99_ms": p99,
@@ -222,15 +223,17 @@ def run_eval_multi_seed(
             f"Latency gate failed: max P99 {max_p99:.1f}ms > {max_p99_ms:.1f}ms across seeds {seeds}"
         )
 
+    ran_seeds = len(per_seed)
+    total_games = sum(r["games"] for r in per_seed)
     return {
-        "games": float(games * len(seeds)),
+        "games": total_games,
         "win_rate": avg_win_rate,
         "p95_ms": max(r["p95_ms"] for r in per_seed),
         "p99_ms": max_p99,
         "timeouts": float(total_timeouts),
         "finished": sum(r["finished"] for r in per_seed),
         "repetition_events": sum(r["repetition_events"] for r in per_seed),
-        "seeds": float(len(seeds)),
+        "seeds": float(ran_seeds),
     }
 
 

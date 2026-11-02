@@ -147,10 +147,23 @@ def test_shortest_path_edges_blocked_matches_full_board_scan() -> None:
 
     state = build_state(white=(5, 4), black=(3, 4), current="black")
     _, walls = split_legal_actions(get_legal_actions(state))
+    assert walls, "need legal walls for correctness cross-check"
     opponent_dist = _opponent_distances(state, state.current_player)
-    for wall in walls[:40]:
+    saw_positive = False
+    for wall in walls:
         fast = shortest_path_edges_blocked(state, wall, cache=None, opponent_dist=opponent_dist)
         slow = brute_force_blocked(state, wall, opponent_dist)
+        assert fast == slow
+        if fast > 0:
+            saw_positive = True
+    assert saw_positive
+
+    edge_state = build_state(white=(0, 4), black=(8, 4), current="black")
+    _, edge_walls = split_legal_actions(get_legal_actions(edge_state))
+    edge_dist = _opponent_distances(edge_state, edge_state.current_player)
+    for wall in edge_walls:
+        fast = shortest_path_edges_blocked(edge_state, wall, cache=None, opponent_dist=edge_dist)
+        slow = brute_force_blocked(edge_state, wall, edge_dist)
         assert fast == slow
 
 
