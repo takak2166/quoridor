@@ -231,6 +231,8 @@ PF_CASES = [
 def seed3_wall_separated_choke() -> QuoridorState:
     """Training smoke seed=3 after easy sits on the eastern gate.
 
+    Also used by slow perf tests (``tests/slow/test_legal_moves_perf.py``).
+
     White (3, 4) and black (3, 5) are Manhattan-adjacent, but vertical wall
     (2, 4) sits between them, so a jump is illegal. Black occupies the only
     open corridor to the east. Evaluation must still find a path: a pawn is
