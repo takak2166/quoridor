@@ -10,12 +10,12 @@ import pytest
 from quoridor.domain.actions import WallSlot
 from quoridor.domain.game import Game
 from quoridor.domain.state import QuoridorState, initial_state
-from quoridor.rules import get_legal_actions
+from quoridor.rules import _has_any_wall, get_legal_actions
 from tests.unit.fixtures.plan_fixtures import seed3_wall_separated_choke
 
-# P99 ceilings (ms), from 2000 timed samples after 100 warmup (100+2000 per test):
-# Calibrated on ubuntu24 self-hosted worker via `make test-slow` (pytest -m slow);
-# see commit SHA in git blame on this block when revisiting thresholds.
+# P99 ceilings (ms), from 2000 timed samples after 100 warmup (100+2000 per test).
+# Calibrated on ubuntu24 self-hosted worker via `make test-slow` (baseline c93de66);
+# GHA CI/nightly uses ubuntu-latest (see .github/workflows/ci.yml) — revisit thresholds if runners diverge.
 # empty board get_legal_actions ~5 ms p99 -> 50 (~10x headroom);
 # seed3 get_legal_actions ~209 ms p99 -> 300 (~1.4x);
 # seed3 Game.play(one legal wall) ~3.8 ms p99 -> 15 (~4x).
@@ -25,12 +25,6 @@ _P99_MS_GAME_PLAY_WALL = 15.0
 
 # Fixed legal wall on seed3_wall_separated_choke (not get_legal_actions enumeration order).
 _PERF_WALL_SEED3 = WallSlot("horizontal", 3, 4)
-
-
-def _state_has_placed_walls(state: QuoridorState) -> bool:
-    return any(any(row) for row in state.horizontal_walls) or any(
-        any(row) for row in state.vertical_walls
-    )
 
 
 def _p99_ms(samples: list[float]) -> float:
@@ -58,7 +52,7 @@ def test_legal_moves_perf_typical() -> None:
 def test_legal_moves_perf_with_walls() -> None:
     """Many walls force path BFS on each wall candidate (not the empty-board fast path)."""
     state = seed3_wall_separated_choke()
-    assert _state_has_placed_walls(state), (
+    assert _has_any_wall(state), (
         "seed3_wall_separated_choke must include placed walls for BFS path checks"
     )
     samples: list[float] = []
@@ -76,7 +70,7 @@ def test_legal_moves_perf_with_walls() -> None:
 def test_game_play_perf_wall_with_walls() -> None:
     """Times a single legal wall via Game.play (one apply_action path check), not full get_legal_actions."""
     state = seed3_wall_separated_choke()
-    assert _state_has_placed_walls(state), (
+    assert _has_any_wall(state), (
         "seed3_wall_separated_choke must include placed walls for BFS path checks"
     )
     legal = get_legal_actions(state)
