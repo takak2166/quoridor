@@ -13,6 +13,7 @@ from quoridor.domain.actions import Action, action_child_key, encode
 from quoridor.domain.state import Color, QuoridorState
 from quoridor.rules import apply_action
 
+# Cached per MCTS node: same (state, color) must stay stable for one mcts_search tree.
 PriorFn = Callable[[QuoridorState, Color], NDArray[np.floating]]
 
 
@@ -49,7 +50,7 @@ def mcts_search(
     dist_cache = SimpleDistanceCache()
     root = _MCTSNode(state=state, parent=None, action=None, player=color, untried=list(legal_actions))
     # Warm the root prior before the budget loop (side effect only; used on first expansion/select).
-    _ensure_prior_vector(root, prior_fn)
+    _cache_prior(root, prior_fn)
     deadline = time.perf_counter() + budget_ms / 1000
     sims = 0
 
@@ -66,7 +67,7 @@ def mcts_search(
         if node.untried:
             from_pos = node.state.pawn(node.player)
             expansion_prior = _normalized_prior(
-                _ensure_prior_vector(node, prior_fn),
+                _cache_prior(node, prior_fn),
                 node.untried,
                 from_pos,
             )
@@ -96,7 +97,7 @@ def mcts_search(
     return best.action  # type: ignore[return-value]
 
 
-def _ensure_prior_vector(node: _MCTSNode, prior_fn: PriorFn) -> NDArray[np.floating]:
+def _cache_prior(node: _MCTSNode, prior_fn: PriorFn) -> NDArray[np.floating]:
     if node.prior_vector is None:
         node.prior_vector = prior_fn(node.state, node.player)
     return node.prior_vector
@@ -144,7 +145,7 @@ def _select_child(node: _MCTSNode, root_color: Color, c_puct: float, prior_fn: P
     total = sum(child.visits for child in node.children.values())
     child_actions = [child.action for child in node.children.values() if child.action is not None]
     from_pos = node.state.pawn(node.player)
-    prior = _normalized_prior(_ensure_prior_vector(node, prior_fn), child_actions, from_pos)
+    prior = _normalized_prior(_cache_prior(node, prior_fn), child_actions, from_pos)
     best_score = -math.inf
     best_child = next(iter(node.children.values()))
     for child in node.children.values():

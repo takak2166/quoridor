@@ -1,6 +1,6 @@
 from unittest.mock import patch
 
-from app.infrastructure.ai.mcts import mcts_search
+from app.infrastructure.ai.mcts import _cache_prior, _MCTSNode, mcts_search
 from app.middleware.metrics import metrics_store
 from quoridor.domain.state import initial_state
 from quoridor.rules import get_legal_actions
@@ -50,14 +50,35 @@ def test_mcts_budget_stops_within_wall_clock() -> None:
     assert len(metrics_store.mcts_sim_count) == before + 1
 
 
-def test_mcts_prior_fn_called_once_per_tree_node() -> None:
-    """Shallow legal set + fake clock forces _select_child; uncached prior_fn would exceed sims+1."""
+def test_cache_prior_calls_prior_fn_once() -> None:
     ai = FakeAi()
     calls = {"n": 0}
     original = ai.action_prior
 
     def counting_prior(state, color):
         calls["n"] += 1
+        return original(state, color)
+
+    state = initial_state()
+    node = _MCTSNode(state=state, parent=None, action=None, player="black", untried=[])
+    first = _cache_prior(node, counting_prior)
+    second = _cache_prior(node, counting_prior)
+    assert calls["n"] == 1
+    assert first is second
+
+
+def test_mcts_prior_fn_called_once_per_tree_node() -> None:
+    """Shallow legal set + fake clock forces _select_child; duplicate (state, color) calls fail."""
+    ai = FakeAi()
+    seen: set[tuple[int, str]] = set()
+    duplicates: list[tuple[int, str]] = []
+    original = ai.action_prior
+
+    def counting_prior(state, color):
+        key = (id(state), color)
+        if key in seen:
+            duplicates.append(key)
+        seen.add(key)
         return original(state, color)
 
     state = initial_state()
@@ -83,8 +104,8 @@ def test_mcts_prior_fn_called_once_per_tree_node() -> None:
     assert len(metrics_store.mcts_sim_count) == before + 1
     sims = metrics_store.mcts_sim_count[-1]
     assert sims > 5
-    # Uncached `_select_child` calls prior_fn about once per sim on a full root; cache stays << sims.
-    assert calls["n"] < sims
+    assert duplicates == []
+    assert len(seen) < sims
 
 
 def test_mcts_expands_opponent_nodes_with_side_to_move_prior() -> None:
