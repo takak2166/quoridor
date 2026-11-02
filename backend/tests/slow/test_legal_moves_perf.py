@@ -9,7 +9,7 @@ import pytest
 
 from quoridor.domain.actions import WallSlot
 from quoridor.domain.game import Game
-from quoridor.domain.state import QuoridorState, initial_state
+from quoridor.domain.state import initial_state
 from quoridor.rules import _has_any_wall, get_legal_actions
 from tests.unit.fixtures.plan_fixtures import seed3_wall_separated_choke
 
