@@ -7,7 +7,7 @@ from fastapi.testclient import TestClient
 
 from app.config import settings
 from app.main import create_app
-from app.services.game_service import reset_process_ai_limiter_for_tests
+from tests.support.ai_limiter import reset_process_ai_limiter_for_tests
 from tests.support.fake_ai import AiConcurrencyTracker, FakeAiProvider
 
 
@@ -34,17 +34,30 @@ def test_parallel_create_via_get_game_service_respects_ai_limit(
     app = create_app()
     client = TestClient(app)
 
-    def create_white_game() -> int:
+    def create_white_game() -> tuple[int, dict[str, object] | None]:
         resp = client.post("/api/v1/games", json={"human_color": "white", "difficulty": "easy"})
-        return resp.status_code
+        body: dict[str, object] | None = None
+        if resp.headers.get("content-type", "").startswith("application/json"):
+            body = resp.json()
+        return resp.status_code, body
 
     with ThreadPoolExecutor(max_workers=6) as pool:
-        statuses = list(pool.map(lambda _: create_white_game(), range(6)))
+        results = list(pool.map(lambda _: create_white_game(), range(6)))
 
+    statuses = [status for status, _ in results]
     assert tracker.peak <= settings.ai_concurrent_limit
     assert tracker.peak >= 1
     assert all(status in {201, 503} for status in statuses)
     assert 201 in statuses
+    limit_statuses = [status for status, _ in results if status == 503]
+    assert len(limit_statuses) < len(results), "expected at least one successful create under contention"
+    for status, body in results:
+        if status != 503:
+            continue
+        assert body is not None
+        error = body["detail"]["error"]  # type: ignore[index]
+        assert error["code"] == "AI_FAILURE"
+        assert error["details"]["reason"] == "concurrency_limit"
 
 
 def test_ai_concurrency_limit_returns_503(monkeypatch: pytest.MonkeyPatch) -> None:
