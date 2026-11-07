@@ -14,6 +14,9 @@ jobs:
         working-directory: backend
     steps:
       - uses: actions/checkout@v4
+      - name: Make dev port overrides
+        working-directory: .
+        run: bash scripts/test_make_dev_ports.sh
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"

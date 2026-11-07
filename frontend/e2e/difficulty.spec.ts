@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 
+import { readPortEnv } from "../envPorts";
 import { clickNewGame, startGame } from "./helpers";
 
 test.describe("Difficulty selection", () => {
@@ -23,7 +24,7 @@ test.describe("Difficulty selection", () => {
   });
 
   test("health ready reports expert model availability", async ({ page, request }) => {
-    const backendPort = process.env.BACKEND_PORT ?? "8000";
+    const backendPort = readPortEnv("BACKEND_PORT", "8000");
     await page.goto("/");
     const resp = await request.get(`http://127.0.0.1:${backendPort}/health/ready`);
     expect(resp.ok()).toBeTruthy();

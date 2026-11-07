@@ -5,7 +5,10 @@ FRONTEND_DIR  := frontend
 UV            := uv
 PNPM          := pnpm
 BACKEND_PORT  ?= 8000
+# Command-line `BACKEND_PORT=` overrides a plain `:=`; normalize with `override`.
+override BACKEND_PORT := $(or $(strip $(BACKEND_PORT)),8000)
 FRONTEND_PORT ?= 5173
+override FRONTEND_PORT := $(or $(strip $(FRONTEND_PORT)),5173)
 
 .PHONY: help
 help: ## List available targets
@@ -51,7 +54,7 @@ dev-backend: install-rl ## FastAPI dev server (:$(BACKEND_PORT))
 
 .PHONY: dev-frontend
 dev-frontend: install-frontend ## Vite dev server (:$(FRONTEND_PORT))
-	cd $(FRONTEND_DIR) && $(PNPM) dev --port $(FRONTEND_PORT) --host
+	cd $(FRONTEND_DIR) && BACKEND_PORT=$(BACKEND_PORT) $(PNPM) dev --port $(FRONTEND_PORT) --host
 
 # --- Tests & quality ---
 
