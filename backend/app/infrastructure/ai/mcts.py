@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import random
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 
 import numpy as np
@@ -11,6 +12,9 @@ from numpy.typing import NDArray
 from quoridor.domain.actions import Action, action_child_key, encode
 from quoridor.domain.state import Color, QuoridorState
 from quoridor.rules import apply_action
+
+# Cached per MCTS node: same (state, color) must stay stable for one mcts_search tree.
+PriorFn = Callable[[QuoridorState, Color], NDArray[np.floating]]
 
 
 @dataclass
@@ -23,24 +27,30 @@ class _MCTSNode:
     value_sum: float = 0.0
     children: dict[tuple[int, tuple[int, int] | None], _MCTSNode] = field(default_factory=dict)
     untried: list[Action] = field(default_factory=list)
+    prior_vector: NDArray[np.floating] | None = field(default=None, compare=False, repr=False)
 
 
 def mcts_search(
     state: QuoridorState,
     color: Color,
-    prior_fn,
+    prior_fn: PriorFn,
     value_fn,
     legal_actions: list[Action],
     budget_ms: int = 450,
     c_puct: float = 1.4,
 ) -> Action:
+    """Run budgeted MCTS with PPO-style priors.
+
+    ``prior_fn`` must be deterministic for a given ``(state, player)`` pair for the
+    lifetime of the search tree; cached priors are not recomputed on revisits.
+    """
     from app.middleware.metrics import metrics_store
     from quoridor.pathfinding import SimpleDistanceCache
 
     dist_cache = SimpleDistanceCache()
     root = _MCTSNode(state=state, parent=None, action=None, player=color, untried=list(legal_actions))
-    root_from = state.pawn(color)
-    root_prior = _normalized_prior(prior_fn(state, color), legal_actions, root_from)
+    # Warm the root prior before the budget loop (side effect only; used on first expansion/select).
+    _cache_prior(root, prior_fn)
     deadline = time.perf_counter() + budget_ms / 1000
     sims = 0
 
@@ -56,14 +66,11 @@ def mcts_search(
 
         if node.untried:
             from_pos = node.state.pawn(node.player)
-            if node is root:
-                expansion_prior = root_prior
-            else:
-                expansion_prior = _normalized_prior(
-                    prior_fn(node.state, node.player),
-                    node.untried,
-                    from_pos,
-                )
+            expansion_prior = _normalized_prior(
+                _cache_prior(node, prior_fn),
+                node.untried,
+                from_pos,
+            )
             action = _pick_expansion(node, expansion_prior, from_pos)
             current_state = apply_action(current_state, action)
             child = _MCTSNode(
@@ -90,6 +97,12 @@ def mcts_search(
     return best.action  # type: ignore[return-value]
 
 
+def _cache_prior(node: _MCTSNode, prior_fn: PriorFn) -> NDArray[np.floating]:
+    if node.prior_vector is None:
+        node.prior_vector = prior_fn(node.state, node.player)
+    return node.prior_vector
+
+
 def _normalized_prior(
     prior: NDArray[np.floating],
     legal_actions: list[Action],
@@ -98,7 +111,11 @@ def _normalized_prior(
     weights: dict[int, float] = {}
     for action in legal_actions:
         idx = encode(action, from_pos=from_pos)
-        weights[idx] = float(prior[idx])
+        weight = float(prior[idx])
+        if not math.isfinite(weight):
+            uniform = 1.0 / len(legal_actions)
+            return {encode(action, from_pos=from_pos): uniform for action in legal_actions}
+        weights[idx] = weight
     total = sum(weights.values())
     if total <= 0:
         uniform = 1.0 / len(legal_actions)
@@ -128,11 +145,11 @@ def _pick_expansion(
     return node.untried.pop()
 
 
-def _select_child(node: _MCTSNode, root_color: Color, c_puct: float, prior_fn) -> _MCTSNode:
+def _select_child(node: _MCTSNode, root_color: Color, c_puct: float, prior_fn: PriorFn) -> _MCTSNode:
     total = sum(child.visits for child in node.children.values())
     child_actions = [child.action for child in node.children.values() if child.action is not None]
     from_pos = node.state.pawn(node.player)
-    prior = _normalized_prior(prior_fn(node.state, node.player), child_actions, from_pos)
+    prior = _normalized_prior(_cache_prior(node, prior_fn), child_actions, from_pos)
     best_score = -math.inf
     best_child = next(iter(node.children.values()))
     for child in node.children.values():
