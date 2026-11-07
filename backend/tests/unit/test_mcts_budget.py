@@ -1,7 +1,11 @@
+import math
 from unittest.mock import patch
 
-from app.infrastructure.ai.mcts import _cache_prior, _MCTSNode, mcts_search
+import numpy as np
+
+from app.infrastructure.ai.mcts import _cache_prior, _MCTSNode, _normalized_prior, mcts_search
 from app.middleware.metrics import metrics_store
+from quoridor.domain.actions import NUM_ACTIONS, encode
 from quoridor.domain.state import initial_state
 from quoridor.rules import get_legal_actions
 
@@ -106,6 +110,54 @@ def test_mcts_prior_fn_called_once_per_tree_node() -> None:
     assert sims > 5
     assert duplicates == []
     assert len(seen) < sims
+
+
+def test_normalized_prior_uniform_on_non_finite_weights() -> None:
+    state = initial_state()
+    legal = get_legal_actions(state)[:3]
+    from_pos = state.pawn("black")
+    uniform = 1.0 / len(legal)
+
+    def make_prior(*values: float) -> np.ndarray:
+        prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        for action, value in zip(legal, values, strict=True):
+            prior[encode(action, from_pos=from_pos)] = value
+        return prior
+
+    for bad_values in (
+        (math.nan, math.nan, math.nan),
+        (math.inf, 0.0, 0.0),
+        (1.0, math.nan, 2.0),
+    ):
+        norm = _normalized_prior(make_prior(*bad_values), legal, from_pos)
+        assert all(math.isfinite(v) for v in norm.values())
+        assert all(abs(v - uniform) < 1e-12 for v in norm.values())
+
+    good = _normalized_prior(make_prior(1.0, 2.0, 3.0), legal, from_pos)
+    assert math.isfinite(sum(good.values()))
+    assert abs(sum(good.values()) - 1.0) < 1e-12
+
+
+def test_mcts_search_with_non_finite_prior_fn() -> None:
+    state = initial_state()
+    legal = get_legal_actions(state)[:2]
+    from_pos = state.pawn("black")
+
+    def toxic_prior(s, color):
+        prior = np.zeros(NUM_ACTIONS, dtype=np.float64)
+        for action in legal:
+            prior[encode(action, from_pos=from_pos)] = math.nan
+        return prior
+
+    action = mcts_search(
+        state,
+        "black",
+        prior_fn=toxic_prior,
+        value_fn=lambda _s, _c: 0.0,
+        legal_actions=legal,
+        budget_ms=50,
+    )
+    assert action in legal
 
 
 def test_mcts_expands_opponent_nodes_with_side_to_move_prior() -> None:

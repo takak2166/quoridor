@@ -111,7 +111,11 @@ def _normalized_prior(
     weights: dict[int, float] = {}
     for action in legal_actions:
         idx = encode(action, from_pos=from_pos)
-        weights[idx] = float(prior[idx])
+        weight = float(prior[idx])
+        if not math.isfinite(weight):
+            uniform = 1.0 / len(legal_actions)
+            return {encode(action, from_pos=from_pos): uniform for action in legal_actions}
+        weights[idx] = weight
     total = sum(weights.values())
     if total <= 0:
         uniform = 1.0 / len(legal_actions)
