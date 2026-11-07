@@ -5,13 +5,10 @@ FRONTEND_DIR  := frontend
 UV            := uv
 PNPM          := pnpm
 BACKEND_PORT  ?= 8000
-ifeq ($(strip $(BACKEND_PORT)),)
-BACKEND_PORT := 8000
-endif
+# Command-line `BACKEND_PORT=` overrides a plain `:=`; normalize with `override`.
+override BACKEND_PORT := $(or $(strip $(BACKEND_PORT)),8000)
 FRONTEND_PORT ?= 5173
-ifeq ($(strip $(FRONTEND_PORT)),)
-FRONTEND_PORT := 5173
-endif
+override FRONTEND_PORT := $(or $(strip $(FRONTEND_PORT)),5173)
 
 .PHONY: help
 help: ## List available targets
