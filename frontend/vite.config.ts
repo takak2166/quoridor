@@ -1,6 +1,8 @@
 import { defineConfig } from "vite";
 
-const backendPort = process.env.BACKEND_PORT ?? "8000";
+import { readPortEnv } from "./envPorts";
+
+const backendPort = readPortEnv("BACKEND_PORT", "8000");
 const backendOrigin = `http://127.0.0.1:${backendPort}`;
 
 export default defineConfig({

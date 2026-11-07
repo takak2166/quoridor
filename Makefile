@@ -5,7 +5,13 @@ FRONTEND_DIR  := frontend
 UV            := uv
 PNPM          := pnpm
 BACKEND_PORT  ?= 8000
+ifeq ($(strip $(BACKEND_PORT)),)
+BACKEND_PORT := 8000
+endif
 FRONTEND_PORT ?= 5173
+ifeq ($(strip $(FRONTEND_PORT)),)
+FRONTEND_PORT := 5173
+endif
 
 .PHONY: help
 help: ## List available targets

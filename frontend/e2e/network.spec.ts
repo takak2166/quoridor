@@ -1,9 +1,10 @@
 import { expect, test } from "@playwright/test";
 
+import { readPortEnv } from "../envPorts";
 import { startGame } from "./helpers";
 
-const backendPort = process.env.BACKEND_PORT ?? "8000";
-const frontendPort = process.env.FRONTEND_PORT ?? "5173";
+const backendPort = readPortEnv("BACKEND_PORT", "8000");
+const frontendPort = readPortEnv("FRONTEND_PORT", "5173");
 
 test.describe("Network & infrastructure", () => {
   test("E2E-061: API is called via same-origin /api proxy", async ({ page }) => {

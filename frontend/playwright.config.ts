@@ -1,7 +1,9 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const backendPort = process.env.BACKEND_PORT ?? "8000";
-const frontendPort = process.env.FRONTEND_PORT ?? "5173";
+import { readPortEnv } from "./envPorts";
+
+const backendPort = readPortEnv("BACKEND_PORT", "8000");
+const frontendPort = readPortEnv("FRONTEND_PORT", "5173");
 
 export default defineConfig({
   testDir: "./e2e",
