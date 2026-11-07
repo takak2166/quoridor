@@ -37,6 +37,7 @@ def run_eval(
     timeouts = 0
     total_repetitions = 0
     latencies: list[float] = []
+    games_played = 0
 
     for i in range(games):
         game = Game.from_initial()
@@ -115,6 +116,7 @@ def run_eval(
                 f"time={game_dt:5.1f}s{rep_note}",
                 flush=True,
             )
+        games_played += 1
         if (
             stop_after_repetition
             and debugger is not None
@@ -123,17 +125,16 @@ def run_eval(
             print(f"Stopping after repetition captured in game {i + 1}.", flush=True)
             break
 
-    played = len(latencies)
     latencies.sort()
     p95_idx = int(0.95 * (len(latencies) - 1)) if latencies else 0
     p99_idx = min(int(len(latencies) * 0.99), len(latencies) - 1) if latencies else 0
     p95 = latencies[p95_idx] if latencies else 0.0
     p99 = latencies[p99_idx] if latencies else 0.0
-    win_rate = wins_a / played if played else 0.0
-    finished = played - timeouts
+    win_rate = wins_a / games_played if games_played else 0.0
+    finished = games_played - timeouts
 
     result = {
-        "games": float(played),
+        "games": float(games_played),
         "win_rate": win_rate,
         "p95_ms": p95,
         "p99_ms": p99,
