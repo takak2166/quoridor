@@ -51,6 +51,24 @@ def _opponent_distances(state: QuoridorState, player: Color) -> dict[tuple[int, 
     return distance_map(state, opponent(player), for_evaluation=True)
 
 
+def _step_pairs_blocked_by_wall(wall: WallSlot) -> list[tuple[tuple[int, int], tuple[int, int]]]:
+    """Directed pawn step pairs a newly placed wall can block (up to four pairs, two undirected edges)."""
+    row, col = wall.row, wall.col
+    if wall.orientation == "horizontal":
+        return [
+            ((row, col), (row + 1, col)),
+            ((row + 1, col), (row, col)),
+            ((row, col + 1), (row + 1, col + 1)),
+            ((row + 1, col + 1), (row, col + 1)),
+        ]
+    return [
+        ((row, col), (row, col + 1)),
+        ((row, col + 1), (row, col)),
+        ((row + 1, col), (row + 1, col + 1)),
+        ((row + 1, col + 1), (row + 1, col)),
+    ]
+
+
 def shortest_path_edges_blocked(
     state: QuoridorState,
     wall: WallSlot,
@@ -73,17 +91,14 @@ def shortest_path_edges_blocked(
 
     temp = state.with_wall(wall.orientation, wall.row, wall.col)
     blocked = 0
-    for pos, base in dist.items():
-        if base >= goal_dist:
+    for pos, nxt in _step_pairs_blocked_by_wall(wall):
+        base = dist.get(pos)
+        if base is None or base >= goal_dist:
             continue
-        r, c = pos
-        for dr, dc in ((0, 1), (0, -1), (1, 0), (-1, 0)):
-            nxt = (r + dr, c + dc)
-            step_dist = dist.get(nxt)
-            if step_dist != base + 1:
-                continue
-            if can_step(state, pos, nxt) and not can_step(temp, pos, nxt):
-                blocked += 1
+        if dist.get(nxt) != base + 1:
+            continue
+        if can_step(state, pos, nxt) and not can_step(temp, pos, nxt):
+            blocked += 1
     return blocked
 
 
@@ -124,11 +139,14 @@ def wall_strategic_score(
     *,
     delta: int | None = None,
     blocked: int | None = None,
+    opponent_dist: dict[tuple[int, int], int] | None = None,
 ) -> int:
     if delta is None:
         delta = enemy_path_delta(state, wall, cache)
     if blocked is None:
-        blocked = shortest_path_edges_blocked(state, wall, cache)
+        blocked = shortest_path_edges_blocked(
+            state, wall, cache, opponent_dist=opponent_dist
+        )
     corridor = corridor_wall_pressure(state, wall)
     return delta * 100 + blocked * 10 + corridor
 
@@ -246,6 +264,13 @@ def select_path_affecting_walls(
     if limit <= 0 or not walls:
         return []
 
+    opponent_dist = _opponent_distances(state, state.current_player)
+    blocked_by_key: dict[tuple[str, int, int], int] = {}
+    for wall in walls:
+        blocked_by_key[_wall_key(wall)] = shortest_path_edges_blocked(
+            state, wall, cache, opponent_dist=opponent_dist
+        )
+
     deltas: dict[tuple[str, int, int], int] = {}
     singles: list[WallSlot] = []
     zero_delta: list[WallSlot] = []
@@ -258,10 +283,8 @@ def select_path_affecting_walls(
             zero_delta.append(wall)
 
     setups: list[WallSlot] = []
-    blocked_by_key: dict[tuple[str, int, int], int] = {}
     remaining = limit - len(singles)
     if allow_two_wall_setup and zero_delta and remaining > 0:
-        opponent_dist = _opponent_distances(state, state.current_player)
         corridor_zeros = [
             wall for wall in zero_delta if corridor_wall_pressure(state, wall) > 0
         ]
@@ -270,10 +293,7 @@ def select_path_affecting_walls(
 
         scored_zeros: list[tuple[WallSlot, int]] = []
         for wall in corridor_zeros:
-            blocked = shortest_path_edges_blocked(
-                state, wall, cache, opponent_dist=opponent_dist
-            )
-            blocked_by_key[_wall_key(wall)] = blocked
+            blocked = blocked_by_key[_wall_key(wall)]
             if blocked > 0:
                 scored_zeros.append((wall, blocked))
         scored_zeros.sort(key=lambda item: _rank_key_for_setup(state, item[0], item[1]))
@@ -283,13 +303,7 @@ def select_path_affecting_walls(
             enemy_before = _enemy_distance(state, cache)
             partner_scored: list[tuple[WallSlot, int]] = list(scored_zeros)
             for wall in singles:
-                blocked = blocked_by_key.get(_wall_key(wall))
-                if blocked is None:
-                    blocked = shortest_path_edges_blocked(
-                        state, wall, cache, opponent_dist=opponent_dist
-                    )
-                    blocked_by_key[_wall_key(wall)] = blocked
-                partner_scored.append((wall, blocked))
+                partner_scored.append((wall, blocked_by_key[_wall_key(wall)]))
             partner_scored.sort(
                 key=lambda item: _rank_key_for_setup(state, item[0], item[1])
             )
@@ -341,6 +355,7 @@ def select_path_affecting_walls(
             cache,
             delta=deltas.get(key),
             blocked=blocked_by_key.get(key),
+            opponent_dist=opponent_dist,
         )
 
     ranked = sorted(
@@ -373,10 +388,23 @@ def prioritize_wall_actions(
             limit,
             allow_two_wall_setup=True,
         )
+    opponent_dist = _opponent_distances(state, state.current_player)
+    blocked_by_key = {
+        _wall_key(wall): shortest_path_edges_blocked(
+            state, wall, cache, opponent_dist=opponent_dist
+        )
+        for wall in walls
+    }
     ranked = sorted(
         walls,
         key=lambda wall: (
-            -wall_strategic_score(state, wall, cache),
+            -wall_strategic_score(
+                state,
+                wall,
+                cache,
+                blocked=blocked_by_key[_wall_key(wall)],
+                opponent_dist=opponent_dist,
+            ),
             wall.row,
             wall.col,
             wall.orientation,

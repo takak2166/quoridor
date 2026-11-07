@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import random
 from typing import Any
 
 import gymnasium as gym
@@ -349,7 +348,7 @@ class QuoridorEnv(gym.Env):
 
     def _select_opponent_move(self, opp_legal: list) -> object:
         if self.opponent == "random":
-            return random.choice(opp_legal)
+            return self.np_random.choice(opp_legal)
 
         if self._opponent_policy is None or self._opponent_policy_name != self.opponent:
             from app.infrastructure.ai.factory import ai_for_difficulty

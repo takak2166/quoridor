@@ -114,6 +114,59 @@ def test_two_phase_root_prefers_blocking_wall_in_corridor() -> None:
     assert isinstance(action, WallSlot)
 
 
+def test_shortest_path_edges_blocked_matches_full_board_scan() -> None:
+    from app.infrastructure.ai.search_actions import (
+        _opponent_distances,
+        opponent,
+        shortest_path_edges_blocked,
+        split_legal_actions,
+    )
+    from quoridor.board_topology import can_step
+    from quoridor.domain.state import GOAL_ROW
+
+    def brute_force_blocked(state, wall, opponent_dist):
+        player = state.current_player
+        dist = opponent_dist
+        goal_row = GOAL_ROW[opponent(player)]
+        goal_dist = min((d for (r, _), d in dist.items() if r == goal_row), default=None)
+        if goal_dist is None:
+            return 0
+        temp = state.with_wall(wall.orientation, wall.row, wall.col)
+        blocked = 0
+        for pos, base in dist.items():
+            if base >= goal_dist:
+                continue
+            r, c = pos
+            for dr, dc in ((0, 1), (0, -1), (1, 0), (-1, 0)):
+                nxt = (r + dr, c + dc)
+                if dist.get(nxt) != base + 1:
+                    continue
+                if can_step(state, pos, nxt) and not can_step(temp, pos, nxt):
+                    blocked += 1
+        return blocked
+
+    state = build_state(white=(5, 4), black=(3, 4), current="black")
+    _, walls = split_legal_actions(get_legal_actions(state))
+    assert walls, "need legal walls for correctness cross-check"
+    opponent_dist = _opponent_distances(state, state.current_player)
+    saw_positive = False
+    for wall in walls:
+        fast = shortest_path_edges_blocked(state, wall, cache=None, opponent_dist=opponent_dist)
+        slow = brute_force_blocked(state, wall, opponent_dist)
+        assert fast == slow
+        if fast > 0:
+            saw_positive = True
+    assert saw_positive
+
+    edge_state = build_state(white=(0, 4), black=(8, 4), current="black")
+    _, edge_walls = split_legal_actions(get_legal_actions(edge_state))
+    edge_dist = _opponent_distances(edge_state, edge_state.current_player)
+    for wall in edge_walls:
+        fast = shortest_path_edges_blocked(edge_state, wall, cache=None, opponent_dist=edge_dist)
+        slow = brute_force_blocked(edge_state, wall, edge_dist)
+        assert fast == slow
+
+
 def test_opening_corridor_wall_ranks_near_opponent_goal() -> None:
     from app.infrastructure.ai.search_actions import prioritize_wall_actions, split_legal_actions
 
